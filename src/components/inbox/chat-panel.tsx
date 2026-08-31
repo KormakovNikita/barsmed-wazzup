@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Check, CheckCheck, Send, Zap } from "lucide-react";
@@ -41,24 +41,37 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
   const conversationIdRef = useRef<string | null>(null);
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const viewport = scrollAreaRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLElement | null;
+    if (!viewport) return;
+
+    if (behavior === "smooth") {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    } else {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, []);
 
   useEffect(() => {
     if (conversation?.id !== conversationIdRef.current) {
       conversationIdRef.current = conversation?.id ?? null;
       messageCountRef.current = conversation?.messages.length ?? 0;
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      requestAnimationFrame(() => scrollMessagesToBottom("auto"));
       return;
     }
 
     const count = conversation?.messages.length ?? 0;
     if (count > messageCountRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollMessagesToBottom("smooth");
     }
     messageCountRef.current = count;
-  }, [conversation?.id, conversation?.messages]);
+  }, [conversation?.id, conversation?.messages, scrollMessagesToBottom]);
 
   async function handleSend() {
     if (!draft.trim() || sending) return;
@@ -103,8 +116,8 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-background">
-      <header className="flex items-center justify-between border-b px-4 py-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
         <div>
           <h2 className="font-semibold">{conversation.contact.name}</h2>
           <ChannelLabel channel={conversation.channel} />
@@ -120,8 +133,9 @@ export function ChatPanel({
         </Button>
       </header>
 
-      <ScrollArea className="flex-1 px-4">
-        <div className="space-y-3 py-4">
+      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="space-y-3 px-4 py-4">
           {conversation.messages.map((msg) => {
             const isOut = msg.direction === "out";
             return (
@@ -155,11 +169,11 @@ export function ChatPanel({
               </div>
             );
           })}
-          <div ref={bottomRef} />
-        </div>
-      </ScrollArea>
+          </div>
+        </ScrollArea>
+      </div>
 
-      <footer className="border-t p-3">
+      <footer className="shrink-0 border-t p-3">
         {sendError && (
           <p className="mb-2 text-xs text-destructive">{sendError}</p>
         )}
