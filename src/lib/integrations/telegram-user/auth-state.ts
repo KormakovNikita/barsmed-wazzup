@@ -1,6 +1,7 @@
 import { TelegramClient } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import type { ApiCredentials } from "teleproto/client/auth";
+import { getSetting } from "@/lib/settings-store";
 
 export interface PendingTelegramAuth {
   id: string;
@@ -15,8 +16,10 @@ const pendingAuths = new Map<string, PendingTelegramAuth>();
 const AUTH_TTL_MS = 10 * 60 * 1000;
 
 export function getApiCredentials(): ApiCredentials | null {
-  const apiId = Number(process.env.TELEGRAM_API_ID);
-  const apiHash = process.env.TELEGRAM_API_HASH;
+  const storedId = getSetting("telegram_api_id");
+  const storedHash = getSetting("telegram_api_hash");
+  const apiId = Number(storedId || process.env.TELEGRAM_API_ID);
+  const apiHash = storedHash || process.env.TELEGRAM_API_HASH || "";
   if (!apiId || !apiHash) return null;
   return { apiId, apiHash };
 }

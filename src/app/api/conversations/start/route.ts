@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveTelegramPeer } from "@/lib/integrations/telegram";
+import { getTelegramMode, resolveTelegramPeer } from "@/lib/integrations/telegram";
 import { startOutboundConversation } from "@/lib/store";
 import type { Channel } from "@/lib/types";
 
@@ -22,24 +22,41 @@ export async function POST(request: Request) {
   }
 
   if (channel === "telegram") {
-    const peer = await resolveTelegramPeer(recipient.trim());
-    if (!peer) {
-      return NextResponse.json(
-        {
-          error:
-            "Не удалось найти пользователя. Проверьте @username или номер телефона",
-        },
-        { status: 404 },
-      );
+    const trimmedRecipient = recipient.trim();
+    let externalThreadId = trimmedRecipient;
+    let contactName = trimmedRecipient;
+    let username: string | undefined;
+
+    if (getTelegramMode() === "user") {
+      const peer = await resolveTelegramPeer(trimmedRecipient);
+      if (!peer) {
+        return NextResponse.json(
+          {
+            error:
+              "Не удалось найти пользователя. Проверьте @username или номер телефона",
+          },
+          { status: 404 },
+        );
+      }
+      externalThreadId = peer.peerId;
+      contactName = peer.name;
+      username = peer.username;
+    } else if (getTelegramMode() === "wazzup") {
+      username = trimmedRecipient.startsWith("@")
+        ? trimmedRecipient.slice(1)
+        : /^\D/.test(trimmedRecipient)
+          ? trimmedRecipient
+          : undefined;
+      contactName = username ? `@${username}` : trimmedRecipient;
     }
 
     const result = await startOutboundConversation({
       channel,
-      externalThreadId: peer.peerId,
-      contactName: peer.name,
+      externalThreadId,
+      contactName,
       content: content.trim(),
       operatorId,
-      username: peer.username,
+      username,
     });
 
     if (!result) {

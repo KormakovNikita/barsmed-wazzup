@@ -10,6 +10,7 @@ import {
   deleteTelegramWebhook,
   getTelegramMode,
   isTelegramConfigured,
+  registerWazzupWebhook,
   setTelegramWebhook,
 } from "@/lib/integrations/telegram";
 import { getAssignmentStrategy, getOperatorLoad } from "@/lib/assignment";
@@ -65,6 +66,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (body.action === "register-wazzup-webhook") {
+    if (!baseUrl) {
+      return NextResponse.json(
+        { error: "WEBHOOK_BASE_URL не задан — нужен HTTPS-домен" },
+        { status: 400 },
+      );
+    }
+    const result = await registerWazzupWebhook(`${baseUrl}/api/webhooks/wazzup`);
+    return NextResponse.json(result);
+  }
+
   if (body.action === "register-webhooks") {
     if (!baseUrl) {
       return NextResponse.json(
@@ -78,6 +90,12 @@ export async function POST(request: Request) {
     if (getTelegramMode() === "bot" && isTelegramConfigured()) {
       results.telegram = await setTelegramWebhook(
         `${baseUrl}/api/webhooks/telegram`,
+      );
+    }
+
+    if (getTelegramMode() === "wazzup") {
+      results.wazzup = await registerWazzupWebhook(
+        `${baseUrl}/api/webhooks/wazzup`,
       );
     }
 

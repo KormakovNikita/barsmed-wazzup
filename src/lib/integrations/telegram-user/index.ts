@@ -26,13 +26,18 @@ export function isTelegramUserConfigured(): boolean {
   return Boolean(getApiCredentials());
 }
 
-export function getTelegramUserMode(): "user" | "bot" {
+export function getTelegramUserMode(): "user" | "bot" | "wazzup" {
   const mode = process.env.TELEGRAM_MODE;
+  if (mode === "wazzup") return "wazzup";
   if (mode === "bot") return "bot";
   if (mode === "user") return "user";
+  if (process.env.WAZZUP_API_KEY && mode !== "bot" && mode !== "user") {
+    return "wazzup";
+  }
   if (getApiCredentials()) return "user";
   if (process.env.TELEGRAM_BOT_TOKEN) return "bot";
-  return "bot";
+  if (process.env.WAZZUP_API_KEY) return "wazzup";
+  return "user";
 }
 
 export async function getTelegramUserClient(): Promise<TelegramClient | null> {

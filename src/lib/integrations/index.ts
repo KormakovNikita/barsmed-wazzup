@@ -74,6 +74,8 @@ export async function getIntegrationStatus() {
       profile: telegram.profile,
       error: "error" in telegram ? telegram.error : null,
       webhooks: "webhooks" in telegram ? telegram.webhooks : [],
+      wazzupChannelId:
+        "wazzupChannelId" in telegram ? telegram.wazzupChannelId : null,
     },
     max: {
       configured: maxConfigured,

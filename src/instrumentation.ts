@@ -3,6 +3,7 @@ export async function register() {
     const {
       getTelegramMode,
       isTelegramBotConfigured,
+      registerWazzupWebhook,
       setTelegramWebhook,
       startTelegramUserListener,
     } = await import("@/lib/integrations/telegram");
@@ -35,6 +36,20 @@ export async function register() {
         );
       } else {
         startTelegramPollingListener();
+      }
+    }
+
+    if (getTelegramMode() === "wazzup" && process.env.WAZZUP_API_KEY) {
+      const webhookBase = process.env.WEBHOOK_BASE_URL;
+      if (webhookBase) {
+        registerWazzupWebhook(`${webhookBase}/api/webhooks/wazzup`).catch(
+          (error) => {
+            console.error(
+              "[instrumentation] Wazzup webhook registration failed:",
+              error,
+            );
+          },
+        );
       }
     }
 

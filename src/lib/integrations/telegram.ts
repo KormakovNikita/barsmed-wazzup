@@ -18,25 +18,33 @@ import {
   sendTelegramUserMessage,
   startTelegramUserListener,
 } from "./telegram-user";
+import {
+  getWazzupTelegramStatus,
+  isWazzupTelegramConfigured,
+  sendWazzupTelegramMessage,
+} from "./wazzup-telegram";
 
 export type { TelegramUpdate } from "./telegram-bot";
 
-export function getTelegramMode(): "user" | "bot" {
+export function getTelegramMode(): "user" | "bot" | "wazzup" {
   return getTelegramUserMode();
 }
 
 export function isTelegramConfigured(): boolean {
-  if (getTelegramMode() === "user") {
-    return isTelegramUserConfigured();
-  }
+  const mode = getTelegramMode();
+  if (mode === "user") return isTelegramUserConfigured();
+  if (mode === "wazzup") return isWazzupTelegramConfigured();
   return isTelegramBotConfigured();
 }
 
 export { isTelegramBotConfigured } from "./telegram-bot";
 
 export async function isTelegramConnected(): Promise<boolean> {
-  if (getTelegramMode() === "user") {
-    return isTelegramUserAuthorized();
+  const mode = getTelegramMode();
+  if (mode === "user") return isTelegramUserAuthorized();
+  if (mode === "wazzup") {
+    const status = await getWazzupTelegramStatus();
+    return status.connected;
   }
   return isTelegramBotConfigured();
 }
@@ -44,8 +52,12 @@ export async function isTelegramConnected(): Promise<boolean> {
 export async function sendTelegramMessage(
   payload: OutboundMessagePayload,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
-  if (getTelegramMode() === "user") {
+  const mode = getTelegramMode();
+  if (mode === "user") {
     return sendTelegramUserMessage(payload.externalThreadId, payload.content);
+  }
+  if (mode === "wazzup") {
+    return sendWazzupTelegramMessage(payload);
   }
   return sendTelegramBotMessage(payload);
 }
@@ -55,8 +67,12 @@ export function parseTelegramUpdate(update: TelegramUpdate) {
 }
 
 export async function pollTelegramUpdates(offset?: number) {
-  if (getTelegramMode() === "user") {
+  const mode = getTelegramMode();
+  if (mode === "user") {
     await startTelegramUserListener();
+    return { updates: [] as TelegramUpdate[], nextOffset: offset };
+  }
+  if (mode === "wazzup") {
     return { updates: [] as TelegramUpdate[], nextOffset: offset };
   }
   return pollTelegramBotUpdates(offset);
@@ -77,6 +93,25 @@ export async function getTelegramStatus() {
       ...getTelegramUserStatus(),
       connected: Boolean(profile),
       profile,
+    };
+  }
+
+  if (mode === "wazzup") {
+    const wazzup = await getWazzupTelegramStatus();
+    return {
+      mode: "wazzup" as const,
+      configured: wazzup.configured,
+      connected: wazzup.connected,
+      profile: wazzup.channelName
+        ? {
+            id: wazzup.channelId ?? "",
+            name: wazzup.channelName,
+            username: undefined,
+          }
+        : null,
+      error: wazzup.error ?? null,
+      webhooks: wazzup.webhookUrl ? [{ url: wazzup.webhookUrl }] : [],
+      wazzupChannelId: wazzup.channelId,
     };
   }
 
@@ -118,3 +153,9 @@ export {
   resolveTelegramPeer,
   startTelegramUserListener,
 } from "./telegram-user";
+
+export {
+  getWazzupTelegramStatus,
+  registerWazzupWebhook,
+  parseWazzupTelegramMessage,
+} from "./wazzup-telegram";
