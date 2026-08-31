@@ -1,19 +1,41 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { startTelegramUserListener, getTelegramMode } = await import(
-      "@/lib/integrations/telegram"
-    );
+    const {
+      getTelegramMode,
+      isTelegramBotConfigured,
+      setTelegramWebhook,
+      startTelegramUserListener,
+    } = await import("@/lib/integrations/telegram");
     const { isMaxConfigured, registerMaxWebhook } = await import(
       "@/lib/integrations/max",
     );
     const { startMaxPollingListener } = await import(
       "@/lib/integrations/max-polling",
     );
+    const { startTelegramPollingListener } = await import(
+      "@/lib/integrations/telegram-polling",
+    );
 
     if (getTelegramMode() === "user") {
       startTelegramUserListener().catch((error) => {
         console.error("[instrumentation] Telegram user listener failed:", error);
       });
+    }
+
+    if (getTelegramMode() === "bot" && isTelegramBotConfigured()) {
+      const webhookBase = process.env.WEBHOOK_BASE_URL;
+      if (webhookBase) {
+        setTelegramWebhook(`${webhookBase}/api/webhooks/telegram`).catch(
+          (error) => {
+            console.error(
+              "[instrumentation] Telegram webhook registration failed:",
+              error,
+            );
+          },
+        );
+      } else {
+        startTelegramPollingListener();
+      }
     }
 
     if (isMaxConfigured()) {

@@ -72,7 +72,72 @@ export async function setTelegramWebhook(webhookUrl: string): Promise<{
 export async function deleteTelegramWebhook(): Promise<void> {
   const token = getTelegramBotToken();
   if (!token) return;
-  await fetch(`${TELEGRAM_API}/bot${token}/deleteWebhook`);
+  await fetch(`${TELEGRAM_API}/bot${token}/deleteWebhook`, {
+    method: "POST",
+  });
+}
+
+export async function getTelegramBotInfo(): Promise<{
+  ok: boolean;
+  bot?: { id: number; name: string; username?: string };
+  error?: string;
+}> {
+  const token = getTelegramBotToken();
+  if (!token) {
+    return { ok: false, error: "TELEGRAM_BOT_TOKEN не задан" };
+  }
+
+  const response = await fetch(`${TELEGRAM_API}/bot${token}/getMe`, {
+    cache: "no-store",
+  });
+  const data = (await response.json()) as {
+    ok: boolean;
+    result?: {
+      id: number;
+      first_name?: string;
+      username?: string;
+    };
+    description?: string;
+  };
+
+  if (!data.ok || !data.result) {
+    return { ok: false, error: data.description ?? "Telegram getMe failed" };
+  }
+
+  return {
+    ok: true,
+    bot: {
+      id: data.result.id,
+      name: data.result.first_name ?? "Telegram Bot",
+      username: data.result.username,
+    },
+  };
+}
+
+export async function getTelegramWebhookInfo(): Promise<{
+  ok: boolean;
+  url?: string;
+  error?: string;
+}> {
+  const token = getTelegramBotToken();
+  if (!token) {
+    return { ok: false, error: "TELEGRAM_BOT_TOKEN не задан" };
+  }
+
+  const response = await fetch(`${TELEGRAM_API}/bot${token}/getWebhookInfo`, {
+    cache: "no-store",
+  });
+  const data = (await response.json()) as {
+    ok: boolean;
+    result?: { url?: string };
+    description?: string;
+  };
+
+  if (!data.ok) {
+    return { ok: false, error: data.description ?? "getWebhookInfo failed" };
+  }
+
+  return { ok: true, url: data.result?.url || undefined };
 }
 
 export interface TelegramUpdate {

@@ -20,10 +20,32 @@ npm run dev -- -p 43123
 
 Откройте [http://localhost:43123/inbox](http://localhost:43123/inbox)
 
-## Telegram — личный аккаунт компании
+## Telegram — бот (рекомендуется)
 
-1. Получите **API ID** и **API Hash** на [my.telegram.org](https://my.telegram.org)
-2. Добавьте в `.env.local`:
+**Не требует my.telegram.org** — работает через @BotFather.
+
+1. Откройте [@BotFather](https://t.me/BotFather) в Telegram
+2. Отправьте `/newbot` и создайте бота для компании
+3. Добавьте в `.env.local`:
+
+```
+TELEGRAM_MODE=bot
+TELEGRAM_BOT_TOKEN=123456789:ABCdef...
+```
+
+4. Перезапустите приложение
+5. Клиенты пишут боту — диалоги появляются во [Входящих](/inbox)
+
+| Режим | Когда | Что нужно |
+|-------|-------|-----------|
+| **Polling** | Нет HTTPS-домена | Только `TELEGRAM_BOT_TOKEN` |
+| **Webhook** | Есть домен с HTTPS | `WEBHOOK_BASE_URL` + nginx |
+
+> Сообщения уходят **от имени бота**, не личного аккаунта сотрудника.
+
+## Telegram — личный аккаунт (как Wazzup)
+
+Требует **API ID** и **API Hash** с [my.telegram.org](https://my.telegram.org). Сайт часто недоступен в РФ — используйте VPN или режим бота выше.
 
 ```
 TELEGRAM_MODE=user
@@ -31,15 +53,12 @@ TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=abcdef1234567890
 ```
 
-3. Откройте [Настройки → Интеграции](/settings/integrations) и войдите по номеру телефона рабочего аккаунта
-4. Сессия сохранится в `.data/telegram-session.txt`
+Затем [Настройки → Интеграции](/settings/integrations) → войдите по номеру телефона.
 
 После подключения:
-- входящие сообщения клиентов приходят в inbox автоматически
-- ваши ответы уходят **от имени аккаунта компании**, как в обычном Telegram
-- можно написать клиенту первым: кнопка **«Написать клиенту»** → `@username` или номер телефона
-
-> Бот-режим (`TELEGRAM_BOT_TOKEN`) остаётся как fallback при `TELEGRAM_MODE=bot`.
+- входящие приходят автоматически
+- ответы уходят **от имени аккаунта компании**
+- можно написать первым через «Написать клиенту»
 
 ## MAX Messenger
 

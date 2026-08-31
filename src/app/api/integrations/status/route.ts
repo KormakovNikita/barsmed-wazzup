@@ -60,6 +60,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, deleted });
   }
 
+  if (body.action === "clear-telegram-webhook") {
+    await deleteTelegramWebhook();
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.action === "register-webhooks") {
     if (!baseUrl) {
       return NextResponse.json(

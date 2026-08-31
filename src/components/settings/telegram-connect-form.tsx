@@ -136,18 +136,27 @@ export function TelegramConnectForm() {
       <div>
         <p className="font-medium">Подключить Telegram аккаунт компании</p>
         <p className="text-sm text-muted-foreground">
-          Используйте рабочий номер телефона. Нужны TELEGRAM_API_ID и
-          TELEGRAM_API_HASH из{" "}
-          <a
-            href="https://my.telegram.org"
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            my.telegram.org
-          </a>
-          .
+          Нужны <code className="text-xs">TELEGRAM_API_ID</code> и{" "}
+          <code className="text-xs">TELEGRAM_API_HASH</code> в{" "}
+          <code className="text-xs">.env.local</code> и{" "}
+          <code className="text-xs">TELEGRAM_MODE=user</code>.
         </p>
+        <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">my.telegram.org выдаёт Error?</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            <li>Попробуйте через VPN (не российский IP)</li>
+            <li>Откройте с телефона через мобильный интернет</li>
+            <li>Другой браузер или режим инкогнито</li>
+            <li>
+              Попросите коллегу за рубежом создать приложение и прислать API ID /
+              Hash
+            </li>
+            <li>
+              Или используйте{" "}
+              <strong>режим бота</strong> выше — он работает без my.telegram.org
+            </li>
+          </ul>
+        </div>
       </div>
 
       {step === "phone" && (

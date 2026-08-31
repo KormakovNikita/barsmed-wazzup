@@ -1,5 +1,7 @@
 import type { IncomingMessagePayload, OutboundMessagePayload } from "@/lib/types";
 import {
+  getTelegramBotInfo,
+  getTelegramWebhookInfo,
   isTelegramBotConfigured,
   parseTelegramBotUpdate,
   pollTelegramBotUpdates,
@@ -29,6 +31,8 @@ export function isTelegramConfigured(): boolean {
   }
   return isTelegramBotConfigured();
 }
+
+export { isTelegramBotConfigured } from "./telegram-bot";
 
 export async function isTelegramConnected(): Promise<boolean> {
   if (getTelegramMode() === "user") {
@@ -64,6 +68,8 @@ export { setTelegramWebhook, deleteTelegramWebhook } from "./telegram-bot";
 
 export async function getTelegramStatus() {
   const mode = getTelegramMode();
+  const webhookBase = process.env.WEBHOOK_BASE_URL;
+
   if (mode === "user") {
     const profile = await getTelegramUserProfile();
     return {
@@ -74,11 +80,26 @@ export async function getTelegramStatus() {
     };
   }
 
+  const botInfo = isTelegramBotConfigured()
+    ? await getTelegramBotInfo()
+    : null;
+  const webhookInfo = isTelegramBotConfigured()
+    ? await getTelegramWebhookInfo()
+    : null;
+
   return {
-    mode: "bot" as const,
+    mode: (webhookBase ? "webhook" : "polling") as "webhook" | "polling",
     configured: isTelegramBotConfigured(),
-    connected: isTelegramBotConfigured(),
-    profile: null,
+    connected: botInfo?.ok ?? false,
+    profile: botInfo?.bot
+      ? {
+          id: String(botInfo.bot.id),
+          name: botInfo.bot.name,
+          username: botInfo.bot.username,
+        }
+      : null,
+    error: botInfo?.ok === false ? botInfo.error : null,
+    webhooks: webhookInfo?.url ? [{ url: webhookInfo.url }] : [],
   };
 }
 

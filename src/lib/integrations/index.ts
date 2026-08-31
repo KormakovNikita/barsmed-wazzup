@@ -72,6 +72,8 @@ export async function getIntegrationStatus() {
       connected: telegram.connected,
       mode: telegram.mode,
       profile: telegram.profile,
+      error: "error" in telegram ? telegram.error : null,
+      webhooks: "webhooks" in telegram ? telegram.webhooks : [],
     },
     max: {
       configured: maxConfigured,

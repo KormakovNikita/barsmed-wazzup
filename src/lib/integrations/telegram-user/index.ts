@@ -32,7 +32,7 @@ export function getTelegramUserMode(): "user" | "bot" {
   if (mode === "user") return "user";
   if (getApiCredentials()) return "user";
   if (process.env.TELEGRAM_BOT_TOKEN) return "bot";
-  return "user";
+  return "bot";
 }
 
 export async function getTelegramUserClient(): Promise<TelegramClient | null> {

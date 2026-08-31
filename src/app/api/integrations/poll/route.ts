@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { parseTelegramWebhookBody } from "@/lib/integrations";
 import { drainMaxUpdates } from "@/lib/integrations/max-polling";
-import { pollTelegramUpdates } from "@/lib/integrations/telegram";
+import { drainTelegramUpdates } from "@/lib/integrations/telegram-polling";
+import { getTelegramMode, pollTelegramUpdates } from "@/lib/integrations/telegram";
 import { processIncomingMessage } from "@/lib/store";
 
 let telegramOffset: number | undefined;
@@ -13,19 +14,30 @@ export async function POST() {
     created?: boolean;
   }[] = [];
 
-  const tg = await pollTelegramUpdates(telegramOffset);
-  if (tg.nextOffset !== undefined) telegramOffset = tg.nextOffset;
-
-  for (const update of tg.updates) {
-    const payload = parseTelegramWebhookBody(update);
-    if (!payload) continue;
-    const result = processIncomingMessage(payload);
-    if (result) {
+  if (getTelegramMode() === "bot") {
+    const telegramEvents = await drainTelegramUpdates();
+    for (const event of telegramEvents) {
       processed.push({
         channel: "telegram",
-        conversationId: result.conversation.id,
-        created: result.created,
+        conversationId: event.conversationId,
+        created: event.created,
       });
+    }
+  } else {
+    const tg = await pollTelegramUpdates(telegramOffset);
+    if (tg.nextOffset !== undefined) telegramOffset = tg.nextOffset;
+
+    for (const update of tg.updates) {
+      const payload = parseTelegramWebhookBody(update);
+      if (!payload) continue;
+      const result = processIncomingMessage(payload);
+      if (result) {
+        processed.push({
+          channel: "telegram",
+          conversationId: result.conversation.id,
+          created: result.created,
+        });
+      }
     }
   }
 
