@@ -39,12 +39,23 @@ export function InboxApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [integrationStatus, setIntegrationStatus] = useState<{
+    telegram: { configured: boolean; mode: string };
+    max: { configured: boolean; mode: string };
+    assignmentStrategy: string;
+    unassigned?: number;
+  } | null>(null);
 
   const fetchStats = useCallback(async () => {
-    const res = await fetch("/api/stats");
-    const data = await res.json();
+    const [statsRes, integrationsRes] = await Promise.all([
+      fetch("/api/stats"),
+      fetch("/api/integrations/status"),
+    ]);
+    const data = await statsRes.json();
+    const integrations = await integrationsRes.json();
     setOperators(data.operators);
     setStats(data.stats);
+    setIntegrationStatus(integrations);
   }, []);
 
   const fetchConversations = useCallback(async () => {
@@ -82,12 +93,26 @@ export function InboxApp() {
   }, [selectedId, fetchConversationDetail]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      const shouldPoll =
+        (integrationStatus?.telegram.configured &&
+          integrationStatus.telegram.mode === "polling") ||
+        (integrationStatus?.max.configured &&
+          integrationStatus.max.mode === "polling");
+
+      if (shouldPoll) {
+        await fetch("/api/integrations/poll", { method: "POST" });
+      }
       fetchConversations();
       if (selectedId) fetchConversationDetail(selectedId);
-    }, 10000);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchConversations, fetchConversationDetail, selectedId]);
+  }, [
+    fetchConversations,
+    fetchConversationDetail,
+    selectedId,
+    integrationStatus,
+  ]);
 
   async function handleSelect(id: string) {
     setSelectedId(id);
@@ -149,6 +174,7 @@ export function InboxApp() {
         onChannelChange={setActiveChannel}
         channelStats={stats.byChannel}
         totalUnread={stats.totalUnread}
+        integrationStatus={integrationStatus}
       />
 
       <div className="hidden w-80 shrink-0 md:block">{conversationListPanel}</div>

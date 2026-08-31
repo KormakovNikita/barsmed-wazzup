@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 const CHANNEL_ICONS: Record<Channel, string> = {
   whatsapp: "WA",
   telegram: "TG",
+  max: "MX",
   vk: "VK",
   instagram: "IG",
 };

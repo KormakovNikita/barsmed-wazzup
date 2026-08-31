@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "HubDesk — Омниканальный inbox",
   description:
-    "Единое окно для WhatsApp, Telegram, VK и Instagram. Аналог Wazzup для вашей компании.",
+    "Единое окно для WhatsApp, Telegram, MAX, VK и Instagram. Аналог Wazzup для вашей компании.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

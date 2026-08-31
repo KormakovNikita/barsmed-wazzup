@@ -14,6 +14,11 @@ export const CHANNEL_CONFIG: Record<
     color: "text-sky-700",
     bg: "bg-sky-100",
   },
+  max: {
+    label: "MAX",
+    color: "text-violet-700",
+    bg: "bg-violet-100",
+  },
   vk: {
     label: "VK",
     color: "text-blue-700",
@@ -25,6 +30,14 @@ export const CHANNEL_CONFIG: Record<
     bg: "bg-pink-100",
   },
 };
+
+export const ALL_CHANNELS: Channel[] = [
+  "whatsapp",
+  "telegram",
+  "max",
+  "vk",
+  "instagram",
+];
 
 export const DEAL_STAGE_LABELS: Record<string, string> = {
   new: "Новый лид",

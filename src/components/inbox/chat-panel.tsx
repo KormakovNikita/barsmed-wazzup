@@ -77,7 +77,7 @@ export function ChatPanel({
         <div>
           <h2 className="font-semibold">Выберите диалог</h2>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Все сообщения из WhatsApp, Telegram, VK и Instagram — в одном окне
+            WhatsApp, Telegram, MAX, VK и Instagram — в одном окне
           </p>
         </div>
       </div>

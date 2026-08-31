@@ -1,8 +1,12 @@
+import { getAssignmentStrategy, pickOperatorForAssignment } from "./assignment";
+import { ALL_CHANNELS } from "./channels";
+import { dispatchOutboundMessage } from "./integrations";
 import type {
   Channel,
   Contact,
   Conversation,
   ConversationDetail,
+  IncomingMessagePayload,
   Message,
   Operator,
 } from "./types";
@@ -31,6 +35,7 @@ const contacts: Contact[] = [
     company: "Смирнова Design",
     tags: ["Дизайн"],
     dealStage: "new",
+    channelUserIds: { telegram: "demo-tg-2" },
   },
   {
     id: "c-3",
@@ -65,6 +70,7 @@ const contacts: Contact[] = [
     company: "Corp.io",
     tags: ["Enterprise"],
     dealStage: "negotiation",
+    channelUserIds: { telegram: "demo-tg-6" },
   },
 ];
 
@@ -82,6 +88,7 @@ let conversations: Conversation[] = [
     id: "conv-2",
     contactId: "c-2",
     channel: "telegram",
+    externalThreadId: "demo-tg-2",
     assignedTo: "op-2",
     unreadCount: 0,
     lastMessagePreview: "Спасибо, посмотрю материалы!",
@@ -117,6 +124,7 @@ let conversations: Conversation[] = [
     id: "conv-6",
     contactId: "c-6",
     channel: "telegram",
+    externalThreadId: "demo-tg-6",
     assignedTo: "op-2",
     unreadCount: 3,
     lastMessagePreview: "Нужна интеграция с нашей CRM.",
@@ -235,9 +243,7 @@ const messages: Message[] = [
   },
 ];
 
-export function getContactForConversation(contactId: string): Contact | undefined {
-  return contacts.find((c) => c.id === contactId);
-}
+const processedExternalIds = new Set<string>();
 
 function getContact(id: string): Contact | undefined {
   return contacts.find((c) => c.id === id);
@@ -245,6 +251,81 @@ function getContact(id: string): Contact | undefined {
 
 function getOperator(id: string): Operator | undefined {
   return operators.find((o) => o.id === id);
+}
+
+function findConversationByExternalThread(
+  channel: Channel,
+  externalThreadId: string,
+): Conversation | undefined {
+  return conversations.find(
+    (c) => c.channel === channel && c.externalThreadId === externalThreadId,
+  );
+}
+
+function findContactByChannelUser(
+  channel: Channel,
+  externalUserId: string,
+): Contact | undefined {
+  return contacts.find(
+    (c) => c.channelUserIds?.[channel] === externalUserId,
+  );
+}
+
+function createContactFromInbound(payload: IncomingMessagePayload): Contact {
+  const contact: Contact = {
+    id: `c-${Date.now()}`,
+    name: payload.senderName,
+    tags: [payload.channel === "max" ? "MAX" : "Telegram"],
+    dealStage: "new",
+    channelUserIds: {
+      [payload.channel]: payload.externalThreadId,
+    },
+    notes: payload.senderUsername
+      ? `@${payload.senderUsername}`
+      : undefined,
+  };
+  contacts.push(contact);
+  return contact;
+}
+
+function createConversation(
+  contactId: string,
+  channel: Channel,
+  externalThreadId: string,
+  preview: string,
+): Conversation {
+  const conversation: Conversation = {
+    id: `conv-${Date.now()}`,
+    contactId,
+    channel,
+    externalThreadId,
+    unreadCount: 0,
+    lastMessagePreview: preview,
+    updatedAt: new Date().toISOString(),
+  };
+  conversations.push(conversation);
+  return conversation;
+}
+
+function autoAssignOperator(conversationId: string): string | null {
+  const operator = pickOperatorForAssignment(
+    operators,
+    conversations,
+    getAssignmentStrategy(),
+  );
+  if (!operator) return null;
+
+  conversations = conversations.map((c) =>
+    c.id === conversationId
+      ? { ...c, assignedTo: operator.id, autoAssigned: true }
+      : c,
+  );
+
+  return operator.id;
+}
+
+export function getContactForConversation(contactId: string): Contact | undefined {
+  return contacts.find((c) => c.id === contactId);
 }
 
 export function listOperators(): Operator[] {
@@ -292,11 +373,98 @@ export function markConversationRead(id: string): void {
   );
 }
 
-export function sendMessage(
+export function processIncomingMessage(
+  payload: IncomingMessagePayload,
+): { message: Message; conversation: Conversation; created: boolean } | null {
+  if (processedExternalIds.has(payload.externalMessageId)) {
+    const existing = findConversationByExternalThread(
+      payload.channel,
+      payload.externalThreadId,
+    );
+    if (!existing) return null;
+    const lastMessage = messages
+      .filter((m) => m.externalId === payload.externalMessageId)
+      .at(-1);
+    if (!lastMessage) return null;
+    return { message: lastMessage, conversation: existing, created: false };
+  }
+
+  processedExternalIds.add(payload.externalMessageId);
+
+  let conversation = findConversationByExternalThread(
+    payload.channel,
+    payload.externalThreadId,
+  );
+  let created = false;
+
+  if (!conversation) {
+    let contact = findContactByChannelUser(
+      payload.channel,
+      payload.externalThreadId,
+    );
+    if (!contact) {
+      contact = createContactFromInbound(payload);
+    } else if (!contact.channelUserIds?.[payload.channel]) {
+      contact.channelUserIds = {
+        ...contact.channelUserIds,
+        [payload.channel]: payload.externalThreadId,
+      };
+    }
+
+    conversation = createConversation(
+      contact.id,
+      payload.channel,
+      payload.externalThreadId,
+      payload.content,
+    );
+    created = true;
+
+    const assignedId = autoAssignOperator(conversation.id);
+    if (assignedId) {
+      conversation =
+        conversations.find((c) => c.id === conversation!.id) ?? conversation;
+    }
+  } else if (!conversation.assignedTo) {
+    autoAssignOperator(conversation.id);
+    conversation =
+      conversations.find((c) => c.id === conversation!.id) ?? conversation;
+  }
+
+  const message: Message = {
+    id: `m-${Date.now()}`,
+    conversationId: conversation.id,
+    content: payload.content,
+    direction: "in",
+    status: "delivered",
+    externalId: payload.externalMessageId,
+    createdAt: new Date().toISOString(),
+  };
+
+  messages.push(message);
+
+  conversations = conversations.map((c) =>
+    c.id === conversation!.id
+      ? {
+          ...c,
+          lastMessagePreview: payload.content,
+          updatedAt: message.createdAt,
+          unreadCount: c.unreadCount + 1,
+        }
+      : c,
+  );
+
+  return {
+    message,
+    conversation: conversations.find((c) => c.id === conversation!.id)!,
+    created,
+  };
+}
+
+export async function sendMessage(
   conversationId: string,
   content: string,
   operatorId = "op-1",
-): Message | null {
+): Promise<Message | null> {
   const conversation = conversations.find((c) => c.id === conversationId);
   if (!conversation || !content.trim()) return null;
 
@@ -323,6 +491,21 @@ export function sendMessage(
       : c,
   );
 
+  if (conversation.externalThreadId) {
+    const result = await dispatchOutboundMessage({
+      channel: conversation.channel,
+      externalThreadId: conversation.externalThreadId,
+      content: content.trim(),
+    });
+
+    const status: Message["status"] = result.ok ? "delivered" : "failed";
+    message.status = status;
+    if (result.externalId) message.externalId = result.externalId;
+
+    const index = messages.findIndex((m) => m.id === message.id);
+    if (index >= 0) messages[index] = { ...message };
+  }
+
   return message;
 }
 
@@ -336,6 +519,7 @@ export function assignConversation(
   const updated = {
     ...conversation,
     assignedTo: operatorId ?? undefined,
+    autoAssigned: false,
   };
 
   conversations = conversations.map((c) =>
@@ -351,6 +535,10 @@ export function simulateIncomingMessage(
 ): Message | null {
   const conversation = conversations.find((c) => c.id === conversationId);
   if (!conversation || !content.trim()) return null;
+
+  if (!conversation.assignedTo) {
+    autoAssignOperator(conversationId);
+  }
 
   const message: Message = {
     id: `m-${Date.now()}`,
@@ -379,15 +567,20 @@ export function simulateIncomingMessage(
 
 export function getStats() {
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
-  const byChannel = (["whatsapp", "telegram", "vk", "instagram"] as Channel[]).map(
-    (ch) => ({
-      channel: ch,
-      count: conversations.filter((c) => c.channel === ch).length,
-      unread: conversations
-        .filter((c) => c.channel === ch)
-        .reduce((sum, c) => sum + c.unreadCount, 0),
-    }),
-  );
+  const byChannel = ALL_CHANNELS.map((ch) => ({
+    channel: ch,
+    count: conversations.filter((c) => c.channel === ch).length,
+    unread: conversations
+      .filter((c) => c.channel === ch)
+      .reduce((sum, c) => sum + c.unreadCount, 0),
+  }));
 
-  return { totalUnread, totalConversations: conversations.length, byChannel };
+  const unassigned = conversations.filter((c) => !c.assignedTo).length;
+
+  return {
+    totalUnread,
+    totalConversations: conversations.length,
+    unassigned,
+    byChannel,
+  };
 }

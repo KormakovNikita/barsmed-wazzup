@@ -19,7 +19,7 @@ export async function POST(
     );
   }
 
-  const message = sendMessage(id, content, operatorId ?? "op-1");
+  const message = await sendMessage(id, content, operatorId ?? "op-1");
 
   if (!message) {
     return NextResponse.json({ error: "Диалог не найден" }, { status: 404 });

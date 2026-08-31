@@ -111,6 +111,11 @@ export function ContactPanel({
             <p className="mb-2 text-xs font-medium text-muted-foreground">
               Ответственный
             </p>
+            {conversation.autoAssigned && conversation.assignedOperator && (
+              <p className="mb-2 rounded-md bg-violet-50 px-2 py-1 text-xs text-violet-700">
+                Назначен автоматически ({conversation.assignedOperator.name})
+              </p>
+            )}
             <div className="space-y-1">
               <button
                 type="button"

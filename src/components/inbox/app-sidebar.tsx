@@ -26,6 +26,11 @@ interface AppSidebarProps {
   onChannelChange: (channel: Channel | "all") => void;
   channelStats: { channel: Channel; count: number; unread: number }[];
   totalUnread: number;
+  integrationStatus?: {
+    telegram: { configured: boolean; mode: string };
+    max: { configured: boolean; mode: string };
+    assignmentStrategy: string;
+  } | null;
 }
 
 export function AppSidebar({
@@ -33,6 +38,7 @@ export function AppSidebar({
   onChannelChange,
   channelStats,
   totalUnread,
+  integrationStatus,
 }: AppSidebarProps) {
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar md:flex">
@@ -100,6 +106,7 @@ export function AppSidebar({
                     "h-2 w-2 rounded-full",
                     channel === "whatsapp" && "bg-emerald-500",
                     channel === "telegram" && "bg-sky-500",
+                    channel === "max" && "bg-violet-500",
                     channel === "vk" && "bg-blue-600",
                     channel === "instagram" && "bg-pink-500",
                   )}
@@ -118,6 +125,41 @@ export function AppSidebar({
           ))}
         </div>
       </div>
+
+      {integrationStatus && (
+        <>
+          <Separator />
+          <div className="p-3">
+            <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Интеграции
+            </p>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span>Telegram</span>
+                <Badge variant={integrationStatus.telegram.configured ? "default" : "secondary"}>
+                  {integrationStatus.telegram.configured
+                    ? integrationStatus.telegram.mode
+                    : "не настроен"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span>MAX</span>
+                <Badge variant={integrationStatus.max.configured ? "default" : "secondary"}>
+                  {integrationStatus.max.configured
+                    ? integrationStatus.max.mode
+                    : "не настроен"}
+                </Badge>
+              </div>
+              <p className="px-1 text-[10px] text-muted-foreground">
+                Автораспределение:{" "}
+                {integrationStatus.assignmentStrategy === "round_robin"
+                  ? "по очереди"
+                  : "по нагрузке"}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
     </aside>
   );
 }

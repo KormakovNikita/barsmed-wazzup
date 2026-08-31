@@ -1,8 +1,15 @@
-export type Channel = "whatsapp" | "telegram" | "vk" | "instagram";
+export type Channel =
+  | "whatsapp"
+  | "telegram"
+  | "max"
+  | "vk"
+  | "instagram";
 
 export type MessageDirection = "in" | "out";
 
 export type MessageStatus = "sent" | "delivered" | "read" | "failed";
+
+export type AssignmentStrategy = "least_loaded" | "round_robin";
 
 export type DealStage =
   | "new"
@@ -27,6 +34,8 @@ export interface Contact {
   tags: string[];
   dealStage: DealStage;
   notes?: string;
+  /** External user ID per channel, e.g. telegram chat id */
+  channelUserIds?: Partial<Record<Channel, string>>;
 }
 
 export interface Message {
@@ -37,6 +46,7 @@ export interface Message {
   status: MessageStatus;
   createdAt: string;
   operatorId?: string;
+  externalId?: string;
 }
 
 export interface Conversation {
@@ -44,6 +54,8 @@ export interface Conversation {
   contactId: string;
   channel: Channel;
   assignedTo?: string;
+  autoAssigned?: boolean;
+  externalThreadId?: string;
   unreadCount: number;
   lastMessagePreview: string;
   updatedAt: string;
@@ -53,4 +65,19 @@ export interface ConversationDetail extends Conversation {
   contact: Contact;
   messages: Message[];
   assignedOperator?: Operator;
+}
+
+export interface IncomingMessagePayload {
+  channel: Channel;
+  externalThreadId: string;
+  externalMessageId: string;
+  content: string;
+  senderName: string;
+  senderUsername?: string;
+}
+
+export interface OutboundMessagePayload {
+  channel: Channel;
+  externalThreadId: string;
+  content: string;
 }

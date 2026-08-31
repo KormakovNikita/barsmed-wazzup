@@ -2,69 +2,108 @@
 
 Омниканальный inbox для бизнес-коммуникаций — аналог Wazzup для вашей компании.
 
-Объединяет переписку из WhatsApp, Telegram, VK и Instagram в одном окне с карточкой контакта, назначением операторов и фильтрацией по каналам.
+Объединяет переписку из WhatsApp, Telegram, MAX, VK и Instagram в одном окне с карточкой контакта, назначением операторов и фильтрацией по каналам.
 
-## Возможности (MVP)
+## Возможности
 
 - **Единый inbox** — все диалоги в одном списке с поиском
-- **Мультиканальность** — WhatsApp, Telegram, VK, Instagram
+- **Telegram Bot** — входящие через webhook или long polling, исходящие через Bot API
+- **MAX Messenger Bot** — webhook/polling, отправка через platform-api2.max.ru
+- **Автораспределение диалогов** — по нагрузке (`least_loaded`) или по очереди (`round_robin`)
 - **Чат** — отправка и получение сообщений, статусы доставки
 - **Карточка контакта** — телефон, email, компания, теги, этап сделки
-- **Назначение операторов** — распределение диалогов между менеджерами
-- **Фильтр по каналам** — быстрый доступ к нужному мессенджеру
-- **Демо входящих** — кнопка «Тест входящего» для проверки UI без реальных API
+- **Назначение операторов** — вручную или автоматически
 
-## Запуск локально
+## Быстрый старт
 
 ```bash
+cp .env.example .env.local
+# Заполните TELEGRAM_BOT_TOKEN и/или MAX_BOT_TOKEN
 npm install
 npm run dev -- -p 43123
 ```
 
 Откройте [http://localhost:43123/inbox](http://localhost:43123/inbox)
 
-## Архитектура
+## Настройка Telegram
 
+1. Создайте бота через [@BotFather](https://t.me/BotFather)
+2. Добавьте токен в `.env.local`:
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_WEBHOOK_SECRET=your-secret
+   ```
+
+**Production (webhook):**
+```bash
+WEBHOOK_BASE_URL=https://your-domain.com
+# Зарегистрировать webhook:
+curl -X POST http://localhost:43123/api/integrations/status \
+  -H "Content-Type: application/json" \
+  -d '{"action":"register-webhooks"}'
 ```
-src/
-├── app/
-│   ├── api/              # REST API (диалоги, сообщения, симуляция)
-│   └── inbox/            # Главный экран
-├── components/inbox/     # UI-компоненты
-└── lib/
-    ├── store.ts          # In-memory хранилище (демо-данные)
-    ├── types.ts          # Типы
-    └── channels.ts       # Конфигурация каналов
+
+**Локальная разработка (polling):**
+```bash
+npm run poll-bots
+# или UI сам опрашивает /api/integrations/poll каждые 5 сек
 ```
 
-## Что дальше для production
+Webhook endpoint: `POST /api/webhooks/telegram`
 
-1. **База данных** — PostgreSQL + Prisma для контактов, диалогов, сообщений
-2. **Real-time** — WebSocket/SSE для мгновенной доставки сообщений
-3. **Интеграции мессенджеров:**
-   - WhatsApp Business API (Meta Cloud API или провайдер)
-   - Telegram Bot API / Telegram Business
-   - VK API (Callback API)
-   - Instagram Messaging API
-4. **CRM-интеграция** — webhook'и и API для amoCRM, Bitrix24
-5. **Авторизация** — роли (оператор, супервизор, админ)
-6. **Очереди** — автоматическое распределение диалогов
-7. **Шаблоны и быстрые ответы**
+## Настройка MAX Messenger
 
-## API (демо)
+1. Создайте бота на [dev.max.ru](https://dev.max.ru) или в «MAX для бизнеса»
+2. Получите токен и добавьте в `.env.local`:
+   ```
+   MAX_BOT_TOKEN=your-max-token
+   MAX_WEBHOOK_SECRET=hubdesk-max-secret
+   MAX_API_BASE_URL=https://platform-api2.max.ru
+   ```
+
+**Production:** укажите `WEBHOOK_BASE_URL` и зарегистрируйте webhook (см. Telegram выше).
+
+Webhook endpoint: `POST /api/webhooks/max`  
+Проверка: заголовок `X-Max-Bot-Api-Secret`
+
+## Автораспределение диалогов
+
+При первом входящем сообщении из Telegram или MAX диалог автоматически назначается оператору.
+
+Стратегии (переменная `ASSIGNMENT_STRATEGY`):
+
+| Значение | Описание |
+|----------|----------|
+| `least_loaded` (по умолчанию) | Оператор с наименьшим числом открытых диалогов |
+| `round_robin` | По очереди среди онлайн-операторов |
+
+Приоритет — операторы со статусом `online`. Если все офлайн, выбирается из всего списка.
+
+Ручное переназначение в карточке контакта сбрасывает флаг автоназначения.
+
+## API
 
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/api/conversations` | Список диалогов |
 | GET | `/api/conversations/:id` | Диалог с сообщениями |
-| POST | `/api/conversations/:id/messages` | Отправить сообщение |
+| POST | `/api/conversations/:id/messages` | Отправить (→ Telegram/MAX) |
 | PATCH | `/api/conversations/:id/assign` | Назначить оператора |
-| POST | `/api/simulate/incoming` | Симуляция входящего |
-| GET | `/api/stats` | Статистика и операторы |
+| POST | `/api/webhooks/telegram` | Webhook Telegram |
+| POST | `/api/webhooks/max` | Webhook MAX |
+| POST | `/api/integrations/poll` | Long polling (dev) |
+| GET | `/api/integrations/status` | Статус интеграций |
+| POST | `/api/integrations/status` | `register-webhooks` / `unregister-webhooks` |
 
 ## Стек
 
 - Next.js 16 (App Router)
 - TypeScript
-- Tailwind CSS 4
-- shadcn/ui
+- Tailwind CSS 4 + shadcn/ui
+
+## Что дальше
+
+- PostgreSQL для персистентного хранения
+- WebSocket/SSE для real-time без polling
+- WhatsApp Business API, VK, Instagram
+- CRM-интеграция (amoCRM, Bitrix24)
