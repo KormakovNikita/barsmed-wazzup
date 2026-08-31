@@ -453,11 +453,112 @@ export function processIncomingMessage(
       : c,
   );
 
-  return {
-    message,
-    conversation: conversations.find((c) => c.id === conversation!.id)!,
-    created,
-  };
+  return { message, conversation: conversations.find((c) => c.id === conversation!.id)!, created };
+}
+
+export function findOrCreateMaxConversation(input: {
+  chatId: string;
+  userId?: string;
+  senderName: string;
+  preview: string;
+}): Conversation {
+  let conversation = findConversationByExternalThread("max", input.chatId);
+
+  if (conversation) {
+    return conversation;
+  }
+
+  let contact = input.userId
+    ? findContactByChannelUser("max", input.userId)
+    : undefined;
+
+  if (!contact) {
+    contact = {
+      id: `c-${Date.now()}`,
+      name: input.senderName,
+      tags: ["MAX"],
+      dealStage: "new",
+      channelUserIds: input.userId ? { max: input.userId } : undefined,
+    };
+    contacts.push(contact);
+  } else if (input.userId && !contact.channelUserIds?.max) {
+    contact.channelUserIds = { ...contact.channelUserIds, max: input.userId };
+  }
+
+  conversation = createConversation(
+    contact.id,
+    "max",
+    input.chatId,
+    input.preview,
+  );
+
+  autoAssignOperator(conversation.id);
+  return conversations.find((c) => c.id === conversation!.id) ?? conversation;
+}
+
+export function importHistoricalMessages(
+  conversationId: string,
+  items: Array<{
+    externalId: string;
+    content: string;
+    direction: "in" | "out";
+    createdAt: string;
+  }>,
+): { imported: number; skipped: number } {
+  let imported = 0;
+  let skipped = 0;
+
+  const existingExternalIds = new Set(
+    messages
+      .filter((m) => m.conversationId === conversationId && m.externalId)
+      .map((m) => m.externalId as string),
+  );
+
+  for (const item of items) {
+    if (
+      processedExternalIds.has(item.externalId) ||
+      existingExternalIds.has(item.externalId)
+    ) {
+      skipped += 1;
+      continue;
+    }
+
+    processedExternalIds.add(item.externalId);
+    existingExternalIds.add(item.externalId);
+
+    messages.push({
+      id: `m-hist-${item.externalId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40)}`,
+      conversationId,
+      content: item.content,
+      direction: item.direction,
+      status: item.direction === "out" ? "delivered" : "read",
+      externalId: item.externalId,
+      createdAt: item.createdAt,
+    });
+    imported += 1;
+  }
+
+  if (imported > 0) {
+    const convMessages = messages
+      .filter((m) => m.conversationId === conversationId)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+    const latest = convMessages[convMessages.length - 1];
+
+    conversations = conversations.map((c) =>
+      c.id === conversationId
+        ? {
+            ...c,
+            lastMessagePreview: latest.content,
+            updatedAt: latest.createdAt,
+          }
+        : c,
+    );
+  }
+
+  return { imported, skipped };
 }
 
 export async function sendMessage(

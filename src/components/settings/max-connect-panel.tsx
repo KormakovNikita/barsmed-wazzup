@@ -52,6 +52,30 @@ export function MaxConnectPanel() {
     loadStatus();
   }, [loadStatus]);
 
+  async function handleSyncHistory() {
+    setActionLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/integrations/max/sync-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации");
+
+      setMessage(
+        `История загружена: ${data.imported} сообщений в ${data.conversations} диалогах` +
+          (data.skipped ? ` (${data.skipped} уже были)` : ""),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleClearWebhooks() {
     setActionLoading(true);
     setError(null);
@@ -127,13 +151,35 @@ export function MaxConnectPanel() {
       </div>
 
       {status?.connected && status.profile ? (
-        <div className="rounded-md border bg-background p-3 text-sm">
-          <p className="font-medium">{status.profile.name}</p>
-          {status.profile.username && (
-            <p className="text-muted-foreground">@{status.profile.username}</p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Режим: {status.mode === "webhook" ? "Webhook" : "Polling (без HTTPS)"}
+        <div className="space-y-3">
+          <div className="rounded-md border bg-background p-3 text-sm">
+            <p className="font-medium">{status.profile.name}</p>
+            {status.profile.username && (
+              <p className="text-muted-foreground">@{status.profile.username}</p>
+            )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Режим: {status.mode === "webhook" ? "Webhook" : "Polling (без HTTPS)"}
+            </p>
+          </div>
+          <Button
+            variant="default"
+            size="sm"
+            disabled={actionLoading}
+            onClick={handleSyncHistory}
+          >
+            {actionLoading ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Загрузка истории…
+              </>
+            ) : (
+              "Загрузить историю переписок MAX"
+            )}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Подтягивает старые сообщения из MAX для всех диалогов, которые уже
+            есть в HubDesk. Диалоги, которые были только в Wazzup, нужно сначала
+            «поймать» новым сообщением от клиента.
           </p>
         </div>
       ) : status?.configured ? (
