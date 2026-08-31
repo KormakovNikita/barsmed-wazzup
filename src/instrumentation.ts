@@ -17,6 +17,12 @@ export async function register() {
     }
 
     if (isMaxConfigured()) {
+      const { mergeDuplicateMaxConversations } = await import("@/lib/store");
+      const merged = mergeDuplicateMaxConversations();
+      if (merged > 0) {
+        console.info(`[instrumentation] Merged ${merged} duplicate MAX dialogs`);
+      }
+
       const webhookBase = process.env.WEBHOOK_BASE_URL;
       if (webhookBase) {
         registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {

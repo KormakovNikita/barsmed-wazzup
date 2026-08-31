@@ -240,14 +240,71 @@ function autoAssignOperator(conversationId: string): string | null {
   return operator.id;
 }
 
+function findConversationByContactAndChannel(
+  contactId: string,
+  channel: Channel,
+): Conversation | undefined {
+  const row = getDb()
+    .prepare(
+      "SELECT * FROM conversations WHERE contact_id = ? AND channel = ? LIMIT 1",
+    )
+    .get(contactId, channel) as ConversationRow | undefined;
+  return row ? rowToConversation(row) : undefined;
+}
+
+function findMaxConversation(
+  chatId?: string,
+  userId?: string,
+): Conversation | undefined {
+  if (chatId) {
+    const byChat = findConversationByExternalThread("max", chatId);
+    if (byChat) return byChat;
+  }
+
+  if (userId) {
+    const byUser = findConversationByExternalThread("max", userId);
+    if (byUser) return byUser;
+
+    const contact = findContactByChannelUser("max", userId);
+    if (contact) {
+      return findConversationByContactAndChannel(contact.id, "max");
+    }
+  }
+
+  return undefined;
+}
+
+function upgradeMaxConversationThread(
+  conversationId: string,
+  chatId: string,
+  userId?: string,
+  contactName?: string,
+): void {
+  getDb()
+    .prepare("UPDATE conversations SET external_thread_id = ? WHERE id = ?")
+    .run(chatId, conversationId);
+
+  registerMaxKnownChat({
+    chatId,
+    userId,
+    contactName,
+    source: "merge",
+  });
+}
+
 function createContactFromInbound(payload: IncomingMessagePayload): Contact {
+  const maxUserId =
+    payload.channel === "max"
+      ? (payload.maxUserId ?? payload.externalThreadId)
+      : payload.externalThreadId;
+
   const contact: Contact = {
     id: `c-${Date.now()}`,
     name: payload.senderName,
     tags: [payload.channel === "max" ? "MAX" : "Telegram"],
     dealStage: "new",
     channelUserIds: {
-      [payload.channel]: payload.externalThreadId,
+      [payload.channel]: maxUserId,
     },
     notes: payload.senderUsername ? `@${payload.senderUsername}` : undefined,
   };
@@ -397,9 +454,24 @@ export function processIncomingMessage(
 ): { message: Message; conversation: Conversation; created: boolean } | null {
   seedDemoDataIfEmpty();
 
+  const maxChatId =
+    payload.channel === "max"
+      ? (payload.maxChatId ??
+        (payload.externalThreadId.length > 8
+          ? payload.externalThreadId
+          : undefined))
+      : undefined;
+  const maxUserId =
+    payload.channel === "max" ? payload.maxUserId : undefined;
+  const threadId =
+    payload.channel === "max"
+      ? (maxChatId ?? maxUserId ?? payload.externalThreadId)
+      : payload.externalThreadId;
+
   if (payload.channel === "max") {
     registerMaxKnownChat({
-      chatId: payload.externalThreadId,
+      chatId: maxChatId ?? threadId,
+      userId: maxUserId,
       contactName: payload.senderName,
       source: "incoming",
     });
@@ -412,10 +484,13 @@ export function processIncomingMessage(
     .get(payload.channel, payload.externalMessageId);
 
   if (existingProcessed) {
-    const existing = findConversationByExternalThread(
-      payload.channel,
-      payload.externalThreadId,
-    );
+    const existing =
+      payload.channel === "max"
+        ? findMaxConversation(maxChatId, maxUserId)
+        : findConversationByExternalThread(
+            payload.channel,
+            threadId,
+          );
     if (!existing) return null;
     const lastMessage = getDb()
       .prepare(
@@ -430,49 +505,81 @@ export function processIncomingMessage(
     };
   }
 
-  let conversation = findConversationByExternalThread(
-    payload.channel,
-    payload.externalThreadId,
-  );
+  let conversation =
+    payload.channel === "max"
+      ? findMaxConversation(maxChatId, maxUserId)
+      : findConversationByExternalThread(payload.channel, threadId);
   let created = false;
 
-  if (!conversation) {
-    let contact = findContactByChannelUser(
-      payload.channel,
-      payload.externalThreadId,
+  if (
+    conversation &&
+    payload.channel === "max" &&
+    maxChatId &&
+    conversation.externalThreadId !== maxChatId
+  ) {
+    upgradeMaxConversationThread(
+      conversation.id,
+      maxChatId,
+      maxUserId,
+      payload.senderName,
     );
+    conversation =
+      findConversationByExternalThread("max", maxChatId) ?? conversation;
+  }
+
+  if (!conversation) {
+    let contact =
+      payload.channel === "max" && maxUserId
+        ? findContactByChannelUser("max", maxUserId)
+        : findContactByChannelUser(payload.channel, threadId);
+
     if (!contact) {
       contact = createContactFromInbound(payload);
-    } else {
-      if (!contact.channelUserIds?.[payload.channel]) {
-        contact.channelUserIds = {
-          ...contact.channelUserIds,
-          [payload.channel]: payload.externalThreadId,
-        };
-        upsertContact(contact);
+    } else if (maxUserId && contact.channelUserIds?.max !== maxUserId) {
+      contact.channelUserIds = { ...contact.channelUserIds, max: maxUserId };
+      upsertContact(contact);
+    }
+
+    conversation = findConversationByContactAndChannel(
+      contact.id,
+      payload.channel,
+    );
+
+    if (conversation && payload.channel === "max" && maxChatId) {
+      if (conversation.externalThreadId !== maxChatId) {
+        upgradeMaxConversationThread(
+          conversation.id,
+          maxChatId,
+          maxUserId,
+          payload.senderName,
+        );
+        conversation =
+          findConversationByExternalThread("max", maxChatId) ?? conversation;
       }
     }
 
-    conversation = createConversation(
-      contact.id,
-      payload.channel,
-      payload.externalThreadId,
-      payload.content,
-    );
-    created = true;
-    autoAssignOperator(conversation.id);
-    conversation =
-      findConversationByExternalThread(
+    if (!conversation) {
+      conversation = createConversation(
+        contact.id,
         payload.channel,
-        payload.externalThreadId,
-      ) ?? conversation;
+        threadId,
+        payload.content,
+      );
+      created = true;
+      autoAssignOperator(conversation.id);
+      conversation =
+        (payload.channel === "max"
+          ? findMaxConversation(maxChatId, maxUserId)
+          : findConversationByExternalThread(payload.channel, threadId)) ??
+        conversation;
+    }
   } else if (!conversation.assignedTo) {
     autoAssignOperator(conversation.id);
     conversation =
-      findConversationByExternalThread(
-        payload.channel,
-        payload.externalThreadId,
-      ) ?? conversation;
+      (payload.channel === "max"
+        ? findMaxConversation(maxChatId, maxUserId)
+        : findConversationByExternalThread(payload.channel, threadId)) ??
+      conversation;
   }
 
   const message: Message = {
@@ -503,12 +610,85 @@ export function processIncomingMessage(
   return {
     message,
     conversation:
-      findConversationByExternalThread(
-        payload.channel,
-        payload.externalThreadId,
-      )!,
+      (payload.channel === "max"
+        ? findMaxConversation(maxChatId, maxUserId)
+        : findConversationByExternalThread(payload.channel, threadId))!,
     created,
   };
+}
+
+export function mergeDuplicateMaxConversations(): number {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.contact_id, c.external_thread_id, c.unread_count, c.last_message_preview, c.updated_at,
+              ct.name, ct.channel_user_ids
+       FROM conversations c
+       JOIN contacts ct ON ct.id = c.contact_id
+       WHERE c.channel = 'max'
+       ORDER BY c.updated_at DESC`,
+    )
+    .all() as Array<{
+    id: string;
+    contact_id: string;
+    external_thread_id: string | null;
+    unread_count: number;
+    last_message_preview: string;
+    updated_at: string;
+    name: string;
+    channel_user_ids: string | null;
+  }>;
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    let userId: string | undefined;
+    if (row.channel_user_ids) {
+      try {
+        userId = (JSON.parse(row.channel_user_ids) as { max?: string }).max;
+      } catch {
+        userId = undefined;
+      }
+    }
+    const key = userId ?? row.name.toLowerCase().trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+
+  let merged = 0;
+  const tx = db.transaction(() => {
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+
+      group.sort(
+        (a, b) =>
+          (b.external_thread_id?.length ?? 0) -
+          (a.external_thread_id?.length ?? 0),
+      );
+      const keep = group[0];
+      let unread = keep.unread_count;
+      let preview = keep.last_message_preview;
+      let updatedAt = keep.updated_at;
+
+      for (const dup of group.slice(1)) {
+        db.prepare(
+          "UPDATE messages SET conversation_id = ? WHERE conversation_id = ?",
+        ).run(keep.id, dup.id);
+        unread += dup.unread_count;
+        if (dup.updated_at > updatedAt) {
+          updatedAt = dup.updated_at;
+          preview = dup.last_message_preview;
+        }
+        db.prepare("DELETE FROM conversations WHERE id = ?").run(dup.id);
+        merged += 1;
+      }
+
+      db.prepare(
+        "UPDATE conversations SET unread_count = ?, last_message_preview = ?, updated_at = ? WHERE id = ?",
+      ).run(unread, preview, updatedAt, keep.id);
+    }
+  });
+  tx();
+  return merged;
 }
 
 export function findOrCreateMaxConversation(input: {

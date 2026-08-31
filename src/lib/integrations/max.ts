@@ -182,8 +182,10 @@ export function parseMaxUpdate(update: MaxUpdate) {
       .filter(Boolean)
       .join(" ")
       .trim();
+    const userId = String(update.user.user_id);
     return {
-      externalThreadId: String(update.user.user_id),
+      externalThreadId: userId,
+      maxUserId: userId,
       externalMessageId: `max-start-${update.user.user_id}-${update.timestamp}`,
       content: "/start",
       senderName: name || update.user.username || "MAX user",
@@ -198,10 +200,9 @@ export function parseMaxUpdate(update: MaxUpdate) {
   const sender = update.message.sender;
   if (!sender || sender.is_bot) return null;
 
-  const threadId =
-    update.message.recipient?.chat_id ??
-    update.message.recipient?.user_id ??
-    sender.user_id;
+  const chatId = update.message.recipient?.chat_id;
+  const userId = String(sender.user_id);
+  const threadId = chatId ? String(chatId) : userId;
 
   const name = [sender.first_name, sender.last_name]
     .filter(Boolean)
@@ -209,7 +210,9 @@ export function parseMaxUpdate(update: MaxUpdate) {
     .trim();
 
   return {
-    externalThreadId: String(threadId),
+    externalThreadId: threadId,
+    maxChatId: chatId ? String(chatId) : undefined,
+    maxUserId: userId,
     externalMessageId: `max-${update.message.body.mid ?? update.timestamp}`,
     content: update.message.body.text,
     senderName: name || sender.username || "MAX user",

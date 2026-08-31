@@ -74,6 +74,10 @@ export interface IncomingMessagePayload {
   content: string;
   senderName: string;
   senderUsername?: string;
+  /** MAX: dialog chat_id (preferred thread key) */
+  maxChatId?: string;
+  /** MAX: sender user_id (for delivery and dedup) */
+  maxUserId?: string;
 }
 
 export interface OutboundMessagePayload {
