@@ -92,6 +92,60 @@ export async function registerMaxWebhook(
   return { ok: true };
 }
 
+export async function listMaxSubscriptions(): Promise<{
+  ok: boolean;
+  subscriptions?: { url: string; update_types?: string[] }[];
+  error?: string;
+}> {
+  const token = getMaxBotToken();
+  if (!token) {
+    return { ok: false, error: "MAX_BOT_TOKEN не задан" };
+  }
+
+  const response = await fetch(`${getMaxApiBase()}/subscriptions`, {
+    headers: { Authorization: token },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    return { ok: false, error: text || `MAX subscriptions ${response.status}` };
+  }
+
+  const data = (await response.json()) as {
+    subscriptions?: { url: string; update_types?: string[] }[];
+  };
+
+  return { ok: true, subscriptions: data.subscriptions ?? [] };
+}
+
+export async function deleteMaxWebhook(
+  webhookUrl: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const token = getMaxBotToken();
+  if (!token) {
+    return { ok: false, error: "MAX_BOT_TOKEN не задан" };
+  }
+
+  const params = new URLSearchParams({ url: webhookUrl });
+  const response = await fetch(`${getMaxApiBase()}/subscriptions?${params}`, {
+    method: "DELETE",
+    headers: { Authorization: token },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    return { ok: false, error: text || `MAX delete subscription ${response.status}` };
+  }
+
+  const data = (await response.json()) as { success?: boolean; message?: string };
+  if (data.success === false) {
+    return { ok: false, error: data.message ?? "Не удалось удалить webhook" };
+  }
+
+  return { ok: true };
+}
+
 export interface MaxUpdate {
   update_type: string;
   timestamp: number;

@@ -17,6 +17,7 @@ interface MaxStatus {
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
+  webhooks?: { url: string }[];
 }
 
 export function MaxConnectPanel() {
@@ -38,6 +39,7 @@ export function MaxConnectPanel() {
         profile: data.max?.profile ?? null,
         error: data.max?.error ?? null,
         webhookBaseUrl: data.webhookBaseUrl ?? null,
+        webhooks: data.max?.webhooks ?? [],
       });
     } catch {
       setError("Не удалось загрузить статус MAX");
@@ -49,6 +51,27 @@ export function MaxConnectPanel() {
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
+
+  async function handleClearWebhooks() {
+    setActionLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/integrations/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear-max-webhooks" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка");
+      setMessage("Чужие webhook отключены — HubDesk получит новые сообщения через polling");
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setActionLoading(false);
+    }
+  }
 
   async function handleRegisterWebhook() {
     setActionLoading(true);
@@ -146,6 +169,29 @@ export function MaxConnectPanel() {
           </li>
           <li>Перезапустите: <code className="text-xs">docker compose restart</code></li>
         </ol>
+      )}
+
+      {status?.webhooks && status.webhooks.length > 0 && (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="font-medium text-amber-900 dark:text-amber-100">
+            Сообщения уходят на чужие webhook — HubDesk их не видит
+          </p>
+          <ul className="list-inside list-disc text-xs text-amber-800 dark:text-amber-200">
+            {status.webhooks.map((sub) => (
+              <li key={sub.url} className="break-all">
+                {sub.url}
+              </li>
+            ))}
+          </ul>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={actionLoading}
+            onClick={handleClearWebhooks}
+          >
+            Отключить чужие webhook
+          </Button>
+        </div>
       )}
 
       {status?.webhookBaseUrl ? (

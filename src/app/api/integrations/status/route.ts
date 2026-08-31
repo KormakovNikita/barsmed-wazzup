@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getIntegrationStatus } from "@/lib/integrations";
 import {
+  deleteMaxWebhook,
   isMaxConfigured,
+  listMaxSubscriptions,
   registerMaxWebhook,
 } from "@/lib/integrations/max";
 import {
@@ -27,8 +29,36 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as { action?: string };
+  const body = (await request.json()) as { action?: string; url?: string };
   const baseUrl = process.env.WEBHOOK_BASE_URL;
+
+  if (body.action === "list-max-subscriptions") {
+    const result = await listMaxSubscriptions();
+    return NextResponse.json(result);
+  }
+
+  if (body.action === "delete-max-webhook") {
+    if (!body.url) {
+      return NextResponse.json({ error: "url обязателен" }, { status: 400 });
+    }
+    const result = await deleteMaxWebhook(body.url);
+    return NextResponse.json(result);
+  }
+
+  if (body.action === "clear-max-webhooks") {
+    const listed = await listMaxSubscriptions();
+    if (!listed.ok || !listed.subscriptions?.length) {
+      return NextResponse.json({ ok: true, deleted: [] });
+    }
+
+    const deleted: { url: string; ok: boolean; error?: string }[] = [];
+    for (const sub of listed.subscriptions) {
+      const result = await deleteMaxWebhook(sub.url);
+      deleted.push({ url: sub.url, ...result });
+    }
+
+    return NextResponse.json({ ok: true, deleted });
+  }
 
   if (body.action === "register-webhooks") {
     if (!baseUrl) {
