@@ -1,5 +1,6 @@
 import type { Channel, IncomingMessagePayload, OutboundMessagePayload } from "@/lib/types";
 import {
+  getMaxBotInfo,
   isMaxConfigured,
   parseMaxUpdate,
   sendMaxMessage,
@@ -60,6 +61,8 @@ export function parseMaxWebhookBody(
 export async function getIntegrationStatus() {
   const webhookBase = process.env.WEBHOOK_BASE_URL;
   const telegram = await getTelegramStatus();
+  const maxConfigured = isMaxConfigured();
+  const maxInfo = maxConfigured ? await getMaxBotInfo() : null;
 
   return {
     telegram: {
@@ -69,9 +72,11 @@ export async function getIntegrationStatus() {
       profile: telegram.profile,
     },
     max: {
-      configured: isMaxConfigured(),
+      configured: maxConfigured,
+      connected: maxInfo?.ok ?? false,
       mode: webhookBase ? "webhook" : "polling",
-      connected: isMaxConfigured(),
+      profile: maxInfo?.bot ?? null,
+      error: maxInfo?.ok === false ? maxInfo.error : null,
     },
     webhookBaseUrl: webhookBase ?? null,
     assignmentStrategy:

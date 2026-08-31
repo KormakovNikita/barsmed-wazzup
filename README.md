@@ -43,12 +43,51 @@ TELEGRAM_API_HASH=abcdef1234567890
 
 ## MAX Messenger
 
-```
-MAX_BOT_TOKEN=your-token
+Подключение через **бота** компании (не личный аккаунт). Нужно верифицированное юрлицо или ИП на [business.max.ru](https://business.max.ru).
+
+### 1. Создайте бота
+
+1. Зарегистрируйте организацию на [business.max.ru](https://business.max.ru)
+2. Чат-боты → **Создать** → заполните карточку → дождитесь модерации
+3. Скопируйте **токен**: Чат-боты → ваш бот → Расширенные настройки → Настроить
+
+### 2. Добавьте токен на сервер
+
+В `/opt/hubdesk/.env.local`:
+
+```env
+MAX_BOT_TOKEN=ваш_токен_из_MAX
+MAX_WEBHOOK_SECRET=hubdesk-max-secret
 MAX_API_BASE_URL=https://platform-api2.max.ru
 ```
 
-Webhook: `POST /api/webhooks/max`
+Перезапуск:
+
+```bash
+cd /opt/hubdesk && docker compose restart
+```
+
+### 3. Проверьте подключение
+
+Откройте [Настройки → Интеграции](/settings/integrations) — должен появиться статус бота.
+
+### Режимы получения сообщений
+
+| Режим | Когда | Что нужно |
+|-------|-------|-----------|
+| **Polling** | Нет HTTPS-домена | Только `MAX_BOT_TOKEN` — HubDesk опрашивает MAX каждые 5 сек |
+| **Webhook** | Есть домен с HTTPS | `WEBHOOK_BASE_URL=https://lk.mrtkt.ru` + nginx + certbot |
+
+Для webhook после настройки HTTPS нажмите **«Зарегистрировать webhook»** в настройках или перезапустите контейнер.
+
+### Как протестировать
+
+1. Найдите бота в MAX по ссылке из карточки (например `max.ru/idИНН_bot`)
+2. Напишите боту любое сообщение
+3. Через несколько секунд диалог появится во [Входящих](/inbox) с каналом MAX
+4. Ответьте из inbox — сообщение уйдёт клиенту в MAX
+
+Webhook endpoint: `POST /api/webhooks/max`
 
 ## API
 

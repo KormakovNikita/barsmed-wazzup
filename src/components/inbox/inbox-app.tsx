@@ -49,7 +49,12 @@ export function InboxApp() {
       mode: string;
       profile?: { name: string; username?: string } | null;
     };
-    max: { configured: boolean; mode: string; connected?: boolean };
+    max: {
+      configured: boolean;
+      mode: string;
+      connected?: boolean;
+      profile?: { name: string; username?: string } | null;
+    };
     assignmentStrategy: string;
   } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);

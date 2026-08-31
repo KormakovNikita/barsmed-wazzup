@@ -44,9 +44,16 @@ TELEGRAM_API_HASH=abcdef...
 WEBHOOK_BASE_URL=https://hubdesk.ваш-домен.ru
 
 # MAX (если нужен):
-MAX_BOT_TOKEN=...
+MAX_BOT_TOKEN=ваш_токен
 MAX_WEBHOOK_SECRET=hubdesk-max-secret
+MAX_API_BASE_URL=https://platform-api2.max.ru
+
+# Без домена polling работает автоматически.
+# С доменом lk.mrtkt.ru:
+# WEBHOOK_BASE_URL=https://lk.mrtkt.ru
 ```
+
+Подробнее про MAX — в README, раздел «MAX Messenger».
 
 ### 4. Откройте в браузере
 

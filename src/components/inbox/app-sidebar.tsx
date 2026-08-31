@@ -34,7 +34,12 @@ interface AppSidebarProps {
       mode: string;
       profile?: { name: string; username?: string } | null;
     };
-    max: { configured: boolean; mode: string };
+    max: {
+      configured: boolean;
+      connected?: boolean;
+      mode: string;
+      profile?: { name: string; username?: string } | null;
+    };
     assignmentStrategy: string;
   } | null;
 }
@@ -157,10 +162,16 @@ export function AppSidebar({
               </div>
               <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
                 <span>MAX</span>
-                <Badge variant={integrationStatus.max.configured ? "default" : "secondary"}>
-                  {integrationStatus.max.configured
-                    ? integrationStatus.max.mode
-                    : "не настроен"}
+                <Badge
+                  variant={
+                    integrationStatus.max.connected ? "default" : "secondary"
+                  }
+                >
+                  {integrationStatus.max.connected
+                    ? integrationStatus.max.profile?.name ?? integrationStatus.max.mode
+                    : integrationStatus.max.configured
+                      ? "ошибка токена"
+                      : "не настроен"}
                 </Badge>
               </div>
               <p className="px-1 text-[10px] text-muted-foreground">

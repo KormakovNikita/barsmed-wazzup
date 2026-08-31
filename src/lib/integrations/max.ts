@@ -190,6 +190,58 @@ export async function pollMaxUpdates(marker?: number): Promise<{
   };
 }
 
+export interface MaxBotInfo {
+  userId: number;
+  name: string;
+  username?: string;
+  description?: string;
+}
+
+export async function getMaxBotInfo(): Promise<{
+  ok: boolean;
+  bot?: MaxBotInfo;
+  error?: string;
+}> {
+  const token = getMaxBotToken();
+  if (!token) {
+    return { ok: false, error: "MAX_BOT_TOKEN не задан" };
+  }
+
+  const response = await fetch(`${getMaxApiBase()}/me`, {
+    headers: { Authorization: token },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    return {
+      ok: false,
+      error: text || `MAX API ${response.status}`,
+    };
+  }
+
+  const data = (await response.json()) as {
+    user_id?: number;
+    first_name?: string;
+    username?: string;
+    description?: string;
+  };
+
+  if (!data.user_id) {
+    return { ok: false, error: "Некорректный ответ MAX API" };
+  }
+
+  return {
+    ok: true,
+    bot: {
+      userId: data.user_id,
+      name: data.first_name ?? "MAX Bot",
+      username: data.username,
+      description: data.description,
+    },
+  };
+}
+
 export function verifyMaxWebhookSecret(request: Request): boolean {
   const secret = process.env.MAX_WEBHOOK_SECRET;
   if (!secret) return true;

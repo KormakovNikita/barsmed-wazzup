@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { parseMaxWebhookBody, parseTelegramWebhookBody } from "@/lib/integrations";
-import { pollMaxUpdates } from "@/lib/integrations/max";
+import { parseTelegramWebhookBody } from "@/lib/integrations";
+import { drainMaxUpdates } from "@/lib/integrations/max-polling";
 import { pollTelegramUpdates } from "@/lib/integrations/telegram";
 import { processIncomingMessage } from "@/lib/store";
 
 let telegramOffset: number | undefined;
-let maxMarker: number | undefined;
 
 export async function POST() {
   const processed: {
@@ -30,20 +29,13 @@ export async function POST() {
     }
   }
 
-  const max = await pollMaxUpdates(maxMarker);
-  if (max.nextMarker !== undefined) maxMarker = max.nextMarker;
-
-  for (const update of max.updates) {
-    const payload = parseMaxWebhookBody(update);
-    if (!payload) continue;
-    const result = processIncomingMessage(payload);
-    if (result) {
-      processed.push({
-        channel: "max",
-        conversationId: result.conversation.id,
-        created: result.created,
-      });
-    }
+  const maxEvents = await drainMaxUpdates();
+  for (const event of maxEvents) {
+    processed.push({
+      channel: "max",
+      conversationId: event.conversationId,
+      created: event.created,
+    });
   }
 
   return NextResponse.json({
