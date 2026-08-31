@@ -20,6 +20,8 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  loading?: boolean;
+  error?: string | null;
 }
 
 export function ConversationList({
@@ -28,6 +30,8 @@ export function ConversationList({
   onSelect,
   searchQuery,
   onSearchChange,
+  loading = false,
+  error = null,
 }: ConversationListProps) {
   const filtered = conversations.filter((conv) => {
     if (!searchQuery.trim()) return true;
@@ -51,8 +55,16 @@ export function ConversationList({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        {filtered.length === 0 ? (
+      <ScrollArea className="min-h-0 flex-1">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+            <p className="text-sm text-muted-foreground">Загрузка диалогов...</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <p className="text-sm text-muted-foreground">Диалоги не найдены</p>
           </div>

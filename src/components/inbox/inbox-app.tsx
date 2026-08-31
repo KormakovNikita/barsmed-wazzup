@@ -38,6 +38,8 @@ export function InboxApp() {
   }>({ totalUnread: 0, byChannel: [] });
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [integrationStatus, setIntegrationStatus] = useState<{
     telegram: { configured: boolean; mode: string };
@@ -59,13 +61,24 @@ export function InboxApp() {
   }, []);
 
   const fetchConversations = useCallback(async () => {
-    const params =
-      activeChannel !== "all" ? `?channel=${activeChannel}` : "";
-    const res = await fetch(`/api/conversations${params}`);
-    const data = await res.json();
-    setConversations(data.conversations);
-    await fetchStats();
-  }, [activeChannel, fetchStats]);
+    try {
+      const params =
+        activeChannel !== "all" ? `?channel=${activeChannel}` : "";
+      const res = await fetch(`/api/conversations${params}`);
+      if (!res.ok) {
+        throw new Error(`Не удалось загрузить диалоги (${res.status})`);
+      }
+      const data = await res.json();
+      setConversations(data.conversations ?? []);
+      setFetchError(null);
+    } catch (error) {
+      setFetchError(
+        error instanceof Error ? error.message : "Ошибка загрузки диалогов",
+      );
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, [activeChannel]);
 
   const fetchConversationDetail = useCallback(async (id: string) => {
     setLoadingDetail(true);
@@ -81,8 +94,10 @@ export function InboxApp() {
   }, []);
 
   useEffect(() => {
+    setLoadingConversations(true);
     fetchConversations();
-  }, [fetchConversations]);
+    fetchStats();
+  }, [fetchConversations, fetchStats]);
 
   useEffect(() => {
     if (selectedId) {
@@ -104,6 +119,7 @@ export function InboxApp() {
         await fetch("/api/integrations/poll", { method: "POST" });
       }
       fetchConversations();
+      fetchStats();
       if (selectedId) fetchConversationDetail(selectedId);
     }, 5000);
     return () => clearInterval(interval);
@@ -157,15 +173,15 @@ export function InboxApp() {
     await fetchConversations();
   }
 
-  const conversationListPanel = (
-    <ConversationList
-      conversations={conversations}
-      selectedId={selectedId}
-      onSelect={handleSelect}
-      searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
-    />
-  );
+  const conversationListProps = {
+    conversations,
+    selectedId,
+    onSelect: handleSelect,
+    searchQuery,
+    onSearchChange: setSearchQuery,
+    loading: loadingConversations,
+    error: fetchError,
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -177,9 +193,11 @@ export function InboxApp() {
         integrationStatus={integrationStatus}
       />
 
-      <div className="hidden w-80 shrink-0 md:block">{conversationListPanel}</div>
+      <div className="hidden h-full min-h-0 w-80 shrink-0 md:block">
+        <ConversationList {...conversationListProps} />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger
@@ -190,7 +208,7 @@ export function InboxApp() {
               }
             />
             <SheetContent side="left" className="w-80 p-0">
-              {conversationListPanel}
+              <ConversationList {...conversationListProps} />
             </SheetContent>
           </Sheet>
           <span className="font-semibold">HubDesk</span>
