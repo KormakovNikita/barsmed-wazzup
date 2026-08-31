@@ -6,6 +6,8 @@ import {
   type MaxUpdate,
 } from "./max";
 import {
+  getTelegramMode,
+  getTelegramStatus,
   isTelegramConfigured,
   parseTelegramUpdate,
   sendTelegramMessage,
@@ -55,16 +57,21 @@ export function parseMaxWebhookBody(
   };
 }
 
-export function getIntegrationStatus() {
+export async function getIntegrationStatus() {
   const webhookBase = process.env.WEBHOOK_BASE_URL;
+  const telegram = await getTelegramStatus();
+
   return {
     telegram: {
-      configured: isTelegramConfigured(),
-      mode: webhookBase ? "webhook" : "polling",
+      configured: telegram.configured,
+      connected: telegram.connected,
+      mode: telegram.mode,
+      profile: telegram.profile,
     },
     max: {
       configured: isMaxConfigured(),
       mode: webhookBase ? "webhook" : "polling",
+      connected: isMaxConfigured(),
     },
     webhookBaseUrl: webhookBase ?? null,
     assignmentStrategy:

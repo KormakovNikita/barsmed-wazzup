@@ -16,9 +16,13 @@ interface ChatPanelProps {
   loading: boolean;
   onSendMessage: (content: string) => Promise<void>;
   onSimulateIncoming: () => Promise<void>;
+  sendError?: string | null;
 }
 
 function MessageStatusIcon({ status }: { status: Message["status"] }) {
+  if (status === "failed") {
+    return <span className="text-destructive">!</span>;
+  }
   if (status === "read") {
     return <CheckCheck className="h-3 w-3 text-sky-500" />;
   }
@@ -33,6 +37,7 @@ export function ChatPanel({
   loading,
   onSendMessage,
   onSimulateIncoming,
+  sendError,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -142,6 +147,9 @@ export function ChatPanel({
       </ScrollArea>
 
       <footer className="border-t p-3">
+        {sendError && (
+          <p className="mb-2 text-xs text-destructive">{sendError}</p>
+        )}
         <div className="flex gap-2">
           <Textarea
             placeholder="Напишите сообщение..."

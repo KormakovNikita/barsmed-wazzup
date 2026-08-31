@@ -6,6 +6,7 @@ import {
 } from "@/lib/integrations/max";
 import {
   deleteTelegramWebhook,
+  getTelegramMode,
   isTelegramConfigured,
   setTelegramWebhook,
 } from "@/lib/integrations/telegram";
@@ -16,9 +17,10 @@ export async function GET() {
   const operators = listOperators();
   const conversations = listConversations();
   const operatorLoad = getOperatorLoad(operators, conversations);
+  const integrations = await getIntegrationStatus();
 
   return NextResponse.json({
-    ...getIntegrationStatus(),
+    ...integrations,
     assignmentStrategy: getAssignmentStrategy(),
     operatorLoad,
   });
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
 
     const results: Record<string, { ok: boolean; error?: string }> = {};
 
-    if (isTelegramConfigured()) {
+    if (getTelegramMode() === "bot" && isTelegramConfigured()) {
       results.telegram = await setTelegramWebhook(
         `${baseUrl}/api/webhooks/telegram`,
       );

@@ -463,10 +463,14 @@ export function processIncomingMessage(
 export async function sendMessage(
   conversationId: string,
   content: string,
-  operatorId = "op-1",
-): Promise<Message | null> {
+  operatorId?: string,
+): Promise<{ message: Message | null; error?: string }> {
   const conversation = conversations.find((c) => c.id === conversationId);
-  if (!conversation || !content.trim()) return null;
+  if (!conversation || !content.trim()) {
+    return { message: null, error: "Диалог не найден" };
+  }
+
+  const senderId = operatorId ?? conversation.assignedTo ?? "op-1";
 
   const message: Message = {
     id: `m-${Date.now()}`,
@@ -474,7 +478,7 @@ export async function sendMessage(
     content: content.trim(),
     direction: "out",
     status: "sent",
-    operatorId,
+    operatorId: senderId,
     createdAt: new Date().toISOString(),
   };
 
@@ -504,9 +508,76 @@ export async function sendMessage(
 
     const index = messages.findIndex((m) => m.id === message.id);
     if (index >= 0) messages[index] = { ...message };
+
+    if (!result.ok) {
+      return { message, error: result.error ?? "Не удалось отправить сообщение" };
+    }
   }
 
-  return message;
+  return { message };
+}
+
+export async function startOutboundConversation(params: {
+  channel: Channel;
+  externalThreadId: string;
+  contactName: string;
+  content: string;
+  operatorId?: string;
+  username?: string;
+}): Promise<{ conversation: Conversation; message: Message; error?: string } | null> {
+  const trimmed = params.content.trim();
+  if (!trimmed) return null;
+
+  let conversation = findConversationByExternalThread(
+    params.channel,
+    params.externalThreadId,
+  );
+
+  if (!conversation) {
+    let contact = findContactByChannelUser(
+      params.channel,
+      params.externalThreadId,
+    );
+
+    if (!contact) {
+      contact = {
+        id: `c-${Date.now()}`,
+        name: params.contactName,
+        tags: ["Исходящий"],
+        dealStage: "new",
+        channelUserIds: { [params.channel]: params.externalThreadId },
+        notes: params.username ? `@${params.username}` : undefined,
+      };
+      contacts.push(contact);
+    }
+
+    conversation = createConversation(
+      contact.id,
+      params.channel,
+      params.externalThreadId,
+      trimmed,
+    );
+
+    if (!conversation.assignedTo) {
+      autoAssignOperator(conversation.id);
+      conversation =
+        conversations.find((c) => c.id === conversation!.id) ?? conversation;
+    }
+  }
+
+  const { message, error } = await sendMessage(
+    conversation.id,
+    trimmed,
+    params.operatorId ?? conversation.assignedTo,
+  );
+
+  if (!message) return null;
+
+  return {
+    conversation: conversations.find((c) => c.id === conversation!.id)!,
+    message,
+    error,
+  };
 }
 
 export function assignConversation(

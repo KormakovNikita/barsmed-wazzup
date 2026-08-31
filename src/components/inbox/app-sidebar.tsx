@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Inbox,
   LayoutDashboard,
@@ -18,7 +19,7 @@ const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Дашборд", href: "#", disabled: true },
   { icon: Inbox, label: "Входящие", href: "/inbox", active: true },
   { icon: Users, label: "Контакты", href: "#", disabled: true },
-  { icon: Settings, label: "Настройки", href: "#", disabled: true },
+  { icon: Settings, label: "Интеграции", href: "/settings/integrations", disabled: false },
 ];
 
 interface AppSidebarProps {
@@ -27,7 +28,12 @@ interface AppSidebarProps {
   channelStats: { channel: Channel; count: number; unread: number }[];
   totalUnread: number;
   integrationStatus?: {
-    telegram: { configured: boolean; mode: string };
+    telegram: {
+      configured: boolean;
+      connected?: boolean;
+      mode: string;
+      profile?: { name: string; username?: string } | null;
+    };
     max: { configured: boolean; mode: string };
     assignmentStrategy: string;
   } | null;
@@ -61,6 +67,7 @@ export function AppSidebar({
             variant={item.active ? "secondary" : "ghost"}
             className="w-full justify-start gap-2"
             disabled={item.disabled}
+            render={!item.disabled && item.href !== "#" ? <Link href={item.href} /> : undefined}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
@@ -136,10 +143,16 @@ export function AppSidebar({
             <div className="space-y-1.5 text-xs">
               <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
                 <span>Telegram</span>
-                <Badge variant={integrationStatus.telegram.configured ? "default" : "secondary"}>
-                  {integrationStatus.telegram.configured
-                    ? integrationStatus.telegram.mode
-                    : "не настроен"}
+                <Badge
+                  variant={
+                    integrationStatus.telegram.connected ? "default" : "secondary"
+                  }
+                >
+                  {integrationStatus.telegram.connected
+                    ? integrationStatus.telegram.profile?.name ?? "подключён"
+                    : integrationStatus.telegram.configured
+                      ? "не подключён"
+                      : "не настроен"}
                 </Badge>
               </div>
               <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">

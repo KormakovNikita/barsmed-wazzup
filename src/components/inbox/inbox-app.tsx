@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/inbox/app-sidebar";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { ChatPanel } from "@/components/inbox/chat-panel";
 import { ContactPanel } from "@/components/inbox/contact-panel";
+import { NewConversationDialog } from "@/components/inbox/new-conversation-dialog";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import type {
@@ -42,11 +43,16 @@ export function InboxApp() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [integrationStatus, setIntegrationStatus] = useState<{
-    telegram: { configured: boolean; mode: string };
-    max: { configured: boolean; mode: string };
+    telegram: {
+      configured: boolean;
+      connected?: boolean;
+      mode: string;
+      profile?: { name: string; username?: string } | null;
+    };
+    max: { configured: boolean; mode: string; connected?: boolean };
     assignmentStrategy: string;
-    unassigned?: number;
   } | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     const [statsRes, integrationsRes] = await Promise.all([
@@ -138,11 +144,19 @@ export function InboxApp() {
 
   async function handleSendMessage(content: string) {
     if (!selectedId) return;
-    await fetch(`/api/conversations/${selectedId}/messages`, {
+    setSendError(null);
+    const res = await fetch(`/api/conversations/${selectedId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        operatorId: conversationDetail?.assignedTo,
+      }),
     });
+    const data = await res.json();
+    if (data.error) {
+      setSendError(data.error);
+    }
     await fetchConversationDetail(selectedId);
     await fetchConversations();
   }
@@ -193,8 +207,19 @@ export function InboxApp() {
         integrationStatus={integrationStatus}
       />
 
-      <div className="hidden h-full min-h-0 w-80 shrink-0 md:block">
-        <ConversationList {...conversationListProps} />
+      <div className="hidden h-full min-h-0 w-80 shrink-0 flex-col md:flex">
+        <div className="border-b p-3">
+          <NewConversationDialog
+            onCreated={(id) => {
+              setSelectedId(id);
+              fetchConversations();
+              fetchConversationDetail(id);
+            }}
+          />
+        </div>
+        <div className="min-h-0 flex-1">
+          <ConversationList {...conversationListProps} />
+        </div>
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -225,6 +250,7 @@ export function InboxApp() {
             loading={loadingDetail && !!selectedId}
             onSendMessage={handleSendMessage}
             onSimulateIncoming={handleSimulateIncoming}
+            sendError={sendError}
           />
           <ContactPanel
             conversation={conversationDetail}
