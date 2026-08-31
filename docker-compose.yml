@@ -1,0 +1,16 @@
+services:
+  hubdesk:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+    volumes:
+      - hubdesk-data:/app/.data
+
+volumes:
+  hubdesk-data:
