@@ -1,0 +1,115 @@
+"use client";
+
+import { formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { ChannelBadge } from "@/components/inbox/channel-badge";
+import type { Conversation, Contact, Channel } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+interface ConversationWithContact extends Conversation {
+  contact?: Contact;
+}
+
+interface ConversationListProps {
+  conversations: ConversationWithContact[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+}
+
+export function ConversationList({
+  conversations,
+  selectedId,
+  onSelect,
+  searchQuery,
+  onSearchChange,
+}: ConversationListProps) {
+  const filtered = conversations.filter((conv) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const name = conv.contact?.name.toLowerCase() ?? "";
+    const preview = conv.lastMessagePreview.toLowerCase();
+    return name.includes(q) || preview.includes(q);
+  });
+
+  return (
+    <div className="flex h-full flex-col border-r bg-card">
+      <div className="border-b p-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Поиск диалогов..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+            <p className="text-sm text-muted-foreground">Диалоги не найдены</p>
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {filtered.map((conv) => (
+              <li key={conv.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(conv.id)}
+                  className={cn(
+                    "flex w-full gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
+                    selectedId === conv.id && "bg-accent",
+                  )}
+                >
+                  <div className="relative shrink-0">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                      {conv.contact?.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2) ?? "??"}
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5">
+                      <ChannelBadge channel={conv.channel as Channel} />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium text-sm">
+                        {conv.contact?.name ?? "Неизвестный контакт"}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {formatDistanceToNow(new Date(conv.updatedAt), {
+                          addSuffix: false,
+                          locale: ru,
+                        })}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {conv.lastMessagePreview}
+                      </p>
+                      {conv.unreadCount > 0 && (
+                        <Badge className="h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px]">
+                          {conv.unreadCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ScrollArea>
+    </div>
+  );
+}
