@@ -1,274 +1,243 @@
-import { getAssignmentStrategy, pickOperatorForAssignment } from "./assignment";
-import { ALL_CHANNELS } from "./channels";
-import { dispatchOutboundMessage } from "./integrations";
+import { getDb, isDatabaseEmpty } from "@/lib/db";
+import { ALL_CHANNELS } from "@/lib/channels";
+import { getAssignmentStrategy, pickOperatorForAssignment } from "@/lib/assignment";
+import { dispatchOutboundMessage } from "@/lib/integrations";
 import type {
   Channel,
   Contact,
   Conversation,
   ConversationDetail,
+  DealStage,
   IncomingMessagePayload,
   Message,
   Operator,
-} from "./types";
+} from "@/lib/types";
 
-const operators: Operator[] = [
-  { id: "op-1", name: "Анна Петрова", avatarInitials: "АП", online: true },
-  { id: "op-2", name: "Иван Сидоров", avatarInitials: "ИС", online: true },
-  { id: "op-3", name: "Мария Козлова", avatarInitials: "МК", online: false },
-];
+type ContactRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  tags: string;
+  deal_stage: DealStage;
+  notes: string | null;
+  channel_user_ids: string | null;
+};
 
-const contacts: Contact[] = [
-  {
-    id: "c-1",
-    name: "Дмитрий Волков",
-    phone: "+7 903 123-45-67",
-    email: "d.volkov@techstart.ru",
-    company: "TechStart",
-    tags: ["VIP", "B2B"],
-    dealStage: "negotiation",
-    notes: "Интересуется корпоративным тарифом на 50 лицензий.",
-  },
-  {
-    id: "c-2",
-    name: "Елена Смирнова",
-    phone: "+7 916 987-65-43",
-    company: "Смирнова Design",
-    tags: ["Дизайн"],
-    dealStage: "new",
-    channelUserIds: { telegram: "demo-tg-2" },
-  },
-  {
-    id: "c-3",
-    name: "Алексей Морозов",
-    phone: "+7 925 555-12-34",
-    email: "a.morozov@gmail.com",
-    tags: ["Поддержка"],
-    dealStage: "proposal",
-    notes: "Ждёт счёт до конца недели.",
-  },
-  {
-    id: "c-4",
-    name: "Ольга Новикова",
-    phone: "+7 903 777-88-99",
-    company: "Novikova Retail",
-    tags: ["Розница", "Повтор"],
-    dealStage: "won",
-  },
-  {
-    id: "c-5",
-    name: "Сергей Кузнецов",
-    phone: "+7 916 333-22-11",
-    tags: ["Холодный"],
-    dealStage: "lost",
-    notes: "Выбрал конкурента.",
-  },
-  {
-    id: "c-6",
-    name: "Наталья Белова",
-    phone: "+7 903 444-55-66",
-    email: "n.belova@corp.io",
-    company: "Corp.io",
-    tags: ["Enterprise"],
-    dealStage: "negotiation",
-    channelUserIds: { telegram: "demo-tg-6" },
-  },
-];
+type ConversationRow = {
+  id: string;
+  contact_id: string;
+  channel: Channel;
+  external_thread_id: string | null;
+  assigned_to: string | null;
+  auto_assigned: number;
+  unread_count: number;
+  last_message_preview: string;
+  updated_at: string;
+};
 
-let conversations: Conversation[] = [
-  {
-    id: "conv-1",
-    contactId: "c-1",
-    channel: "whatsapp",
-    assignedTo: "op-1",
-    unreadCount: 2,
-    lastMessagePreview: "Можете прислать коммерческое предложение?",
-    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "conv-2",
-    contactId: "c-2",
-    channel: "telegram",
-    externalThreadId: "demo-tg-2",
-    assignedTo: "op-2",
-    unreadCount: 0,
-    lastMessagePreview: "Спасибо, посмотрю материалы!",
-    updatedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "conv-3",
-    contactId: "c-3",
-    channel: "whatsapp",
-    assignedTo: "op-1",
-    unreadCount: 1,
-    lastMessagePreview: "Когда будет готов счёт?",
-    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "conv-4",
-    contactId: "c-4",
-    channel: "vk",
-    assignedTo: "op-3",
-    unreadCount: 0,
-    lastMessagePreview: "Отлично, ждём поставку на следующей неделе.",
-    updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "conv-5",
-    contactId: "c-5",
-    channel: "instagram",
-    unreadCount: 0,
-    lastMessagePreview: "Пока не актуально, спасибо.",
-    updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "conv-6",
-    contactId: "c-6",
-    channel: "telegram",
-    externalThreadId: "demo-tg-6",
-    assignedTo: "op-2",
-    unreadCount: 3,
-    lastMessagePreview: "Нужна интеграция с нашей CRM.",
-    updatedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-  },
-];
+type MessageRow = {
+  id: string;
+  conversation_id: string;
+  content: string;
+  direction: "in" | "out";
+  status: Message["status"];
+  operator_id: string | null;
+  external_id: string | null;
+  created_at: string;
+};
 
-const messages: Message[] = [
-  {
-    id: "m-1",
-    conversationId: "conv-1",
-    content: "Добрый день! Мы ищем решение для объединения WhatsApp и CRM.",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-2",
-    conversationId: "conv-1",
-    content:
-      "Здравствуйте, Дмитрий! Рады помочь. Расскажите, сколько менеджеров будет работать с системой?",
-    direction: "out",
-    status: "read",
-    operatorId: "op-1",
-    createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-3",
-    conversationId: "conv-1",
-    content: "Примерно 15 человек в отделе продаж.",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-4",
-    conversationId: "conv-1",
-    content: "Можете прислать коммерческое предложение?",
-    direction: "in",
-    status: "delivered",
-    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-5",
-    conversationId: "conv-2",
-    content: "Привет! Отправила презентацию на почту.",
-    direction: "out",
-    status: "read",
-    operatorId: "op-2",
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-6",
-    conversationId: "conv-2",
-    content: "Спасибо, посмотрю материалы!",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-7",
-    conversationId: "conv-3",
-    content: "Добрый день, счёт ещё в работе?",
-    direction: "in",
-    status: "delivered",
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-8",
-    conversationId: "conv-3",
-    content: "Когда будет готов счёт?",
-    direction: "in",
-    status: "delivered",
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-9",
-    conversationId: "conv-4",
-    content: "Заказ подтверждён, спасибо за сотрудничество!",
-    direction: "out",
-    status: "read",
-    operatorId: "op-3",
-    createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-10",
-    conversationId: "conv-4",
-    content: "Отлично, ждём поставку на следующей неделе.",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-11",
-    conversationId: "conv-5",
-    content: "Пока не актуально, спасибо.",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-12",
-    conversationId: "conv-6",
-    content: "Добрый день! Интересует ваш продукт для нашей команды.",
-    direction: "in",
-    status: "read",
-    createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "m-13",
-    conversationId: "conv-6",
-    content: "Нужна интеграция с нашей CRM.",
-    direction: "in",
-    status: "delivered",
-    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-  },
-];
+function rowToContact(row: ContactRow): Contact {
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone ?? undefined,
+    email: row.email ?? undefined,
+    company: row.company ?? undefined,
+    tags: JSON.parse(row.tags) as string[],
+    dealStage: row.deal_stage,
+    notes: row.notes ?? undefined,
+    channelUserIds: row.channel_user_ids
+      ? (JSON.parse(row.channel_user_ids) as Partial<Record<Channel, string>>)
+      : undefined,
+  };
+}
 
-const processedExternalIds = new Set<string>();
+function rowToConversation(row: ConversationRow): Conversation {
+  return {
+    id: row.id,
+    contactId: row.contact_id,
+    channel: row.channel,
+    externalThreadId: row.external_thread_id ?? undefined,
+    assignedTo: row.assigned_to ?? undefined,
+    autoAssigned: row.auto_assigned === 1,
+    unreadCount: row.unread_count,
+    lastMessagePreview: row.last_message_preview,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToMessage(row: MessageRow): Message {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    content: row.content,
+    direction: row.direction,
+    status: row.status,
+    operatorId: row.operator_id ?? undefined,
+    externalId: row.external_id ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function upsertContact(contact: Contact): void {
+  getDb()
+    .prepare(
+      `INSERT INTO contacts (id, name, phone, email, company, tags, deal_stage, notes, channel_user_ids)
+       VALUES (@id, @name, @phone, @email, @company, @tags, @dealStage, @notes, @channelUserIds)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         phone = excluded.phone,
+         email = excluded.email,
+         company = excluded.company,
+         tags = excluded.tags,
+         deal_stage = excluded.deal_stage,
+         notes = excluded.notes,
+         channel_user_ids = excluded.channel_user_ids`,
+    )
+    .run({
+      id: contact.id,
+      name: contact.name,
+      phone: contact.phone ?? null,
+      email: contact.email ?? null,
+      company: contact.company ?? null,
+      tags: JSON.stringify(contact.tags),
+      dealStage: contact.dealStage,
+      notes: contact.notes ?? null,
+      channelUserIds: contact.channelUserIds
+        ? JSON.stringify(contact.channelUserIds)
+        : null,
+    });
+}
+
+function upsertConversation(conversation: Conversation): void {
+  getDb()
+    .prepare(
+      `INSERT INTO conversations (
+         id, contact_id, channel, external_thread_id, assigned_to, auto_assigned,
+         unread_count, last_message_preview, updated_at
+       ) VALUES (
+         @id, @contactId, @channel, @externalThreadId, @assignedTo, @autoAssigned,
+         @unreadCount, @lastMessagePreview, @updatedAt
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         assigned_to = excluded.assigned_to,
+         auto_assigned = excluded.auto_assigned,
+         unread_count = excluded.unread_count,
+         last_message_preview = excluded.last_message_preview,
+         updated_at = excluded.updated_at`,
+    )
+    .run({
+      id: conversation.id,
+      contactId: conversation.contactId,
+      channel: conversation.channel,
+      externalThreadId: conversation.externalThreadId ?? null,
+      assignedTo: conversation.assignedTo ?? null,
+      autoAssigned: conversation.autoAssigned ? 1 : 0,
+      unreadCount: conversation.unreadCount,
+      lastMessagePreview: conversation.lastMessagePreview,
+      updatedAt: conversation.updatedAt,
+    });
+}
+
+function insertMessage(message: Message): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO messages (
+         id, conversation_id, content, direction, status, operator_id, external_id, created_at
+       ) VALUES (
+         @id, @conversationId, @content, @direction, @status, @operatorId, @externalId, @createdAt
+       )`,
+    )
+    .run({
+      id: message.id,
+      conversationId: message.conversationId,
+      content: message.content,
+      direction: message.direction,
+      status: message.status,
+      operatorId: message.operatorId ?? null,
+      externalId: message.externalId ?? null,
+      createdAt: message.createdAt,
+    });
+}
+
+function updateMessage(message: Message): void {
+  getDb()
+    .prepare(
+      `UPDATE messages SET status = @status, external_id = @externalId WHERE id = @id`,
+    )
+    .run({
+      id: message.id,
+      status: message.status,
+      externalId: message.externalId ?? null,
+    });
+}
 
 function getContact(id: string): Contact | undefined {
-  return contacts.find((c) => c.id === id);
+  const row = getDb()
+    .prepare("SELECT * FROM contacts WHERE id = ?")
+    .get(id) as ContactRow | undefined;
+  return row ? rowToContact(row) : undefined;
 }
 
 function getOperator(id: string): Operator | undefined {
-  return operators.find((o) => o.id === id);
+  const row = getDb()
+    .prepare("SELECT * FROM operators WHERE id = ?")
+    .get(id) as Operator | undefined;
+  return row;
 }
 
 function findConversationByExternalThread(
   channel: Channel,
   externalThreadId: string,
 ): Conversation | undefined {
-  return conversations.find(
-    (c) => c.channel === channel && c.externalThreadId === externalThreadId,
-  );
+  const row = getDb()
+    .prepare(
+      "SELECT * FROM conversations WHERE channel = ? AND external_thread_id = ?",
+    )
+    .get(channel, externalThreadId) as ConversationRow | undefined;
+  return row ? rowToConversation(row) : undefined;
 }
 
 function findContactByChannelUser(
   channel: Channel,
   externalUserId: string,
 ): Contact | undefined {
-  return contacts.find(
-    (c) => c.channelUserIds?.[channel] === externalUserId,
+  const rows = getDb()
+    .prepare("SELECT * FROM contacts WHERE channel_user_ids IS NOT NULL")
+    .all() as ContactRow[];
+
+  return rows
+    .map(rowToContact)
+    .find((c) => c.channelUserIds?.[channel] === externalUserId);
+}
+
+function autoAssignOperator(conversationId: string): string | null {
+  const operator = pickOperatorForAssignment(
+    listOperators(),
+    listConversations(),
+    getAssignmentStrategy(),
   );
+  if (!operator) return null;
+
+  getDb()
+    .prepare(
+      "UPDATE conversations SET assigned_to = ?, auto_assigned = 1 WHERE id = ?",
+    )
+    .run(operator.id, conversationId);
+
+  return operator.id;
 }
 
 function createContactFromInbound(payload: IncomingMessagePayload): Contact {
@@ -280,11 +249,9 @@ function createContactFromInbound(payload: IncomingMessagePayload): Contact {
     channelUserIds: {
       [payload.channel]: payload.externalThreadId,
     },
-    notes: payload.senderUsername
-      ? `@${payload.senderUsername}`
-      : undefined,
+    notes: payload.senderUsername ? `@${payload.senderUsername}` : undefined,
   };
-  contacts.push(contact);
+  upsertContact(contact);
   return contact;
 }
 
@@ -303,64 +270,116 @@ function createConversation(
     lastMessagePreview: preview,
     updatedAt: new Date().toISOString(),
   };
-  conversations.push(conversation);
+  upsertConversation(conversation);
   return conversation;
 }
 
-function autoAssignOperator(conversationId: string): string | null {
-  const operator = pickOperatorForAssignment(
-    operators,
-    conversations,
-    getAssignmentStrategy(),
-  );
-  if (!operator) return null;
+export function registerMaxKnownChat(input: {
+  chatId: string;
+  userId?: string;
+  contactName?: string;
+  source?: string;
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO max_known_chats (chat_id, user_id, contact_name, source, discovered_at)
+       VALUES (@chatId, @userId, @contactName, @source, @discoveredAt)
+       ON CONFLICT(chat_id) DO UPDATE SET
+         user_id = COALESCE(excluded.user_id, max_known_chats.user_id),
+         contact_name = COALESCE(excluded.contact_name, max_known_chats.contact_name),
+         source = excluded.source`,
+    )
+    .run({
+      chatId: input.chatId,
+      userId: input.userId ?? null,
+      contactName: input.contactName ?? null,
+      source: input.source ?? "event",
+      discoveredAt: new Date().toISOString(),
+    });
+}
 
-  conversations = conversations.map((c) =>
-    c.id === conversationId
-      ? { ...c, assignedTo: operator.id, autoAssigned: true }
-      : c,
-  );
+export function listMaxKnownChatIds(): string[] {
+  const rows = getDb()
+    .prepare("SELECT chat_id FROM max_known_chats ORDER BY discovered_at DESC")
+    .all() as { chat_id: string }[];
+  return rows.map((row) => row.chat_id);
+}
 
-  return operator.id;
+export function seedDemoDataIfEmpty(): void {
+  const db = getDb();
+  const opCount = (
+    db.prepare("SELECT COUNT(*) AS count FROM operators").get() as {
+      count: number;
+    }
+  ).count;
+
+  if (opCount === 0) {
+    for (const op of [
+      { id: "op-1", name: "Анна Петрова", avatarInitials: "АП", online: 1 },
+      { id: "op-2", name: "Иван Сидоров", avatarInitials: "ИС", online: 1 },
+      { id: "op-3", name: "Мария Козлова", avatarInitials: "МК", online: 0 },
+    ]) {
+      db.prepare(
+        "INSERT INTO operators (id, name, avatar_initials, online) VALUES (@id, @name, @avatarInitials, @online)",
+      ).run(op);
+    }
+  }
+
+  if (process.env.SEED_DEMO_DATA === "false") return;
+  if (!isDatabaseEmpty()) return;
+  // Demo conversations removed — real data comes from MAX / integrations.
 }
 
 export function getContactForConversation(contactId: string): Contact | undefined {
-  return contacts.find((c) => c.id === contactId);
+  return getContact(contactId);
 }
 
 export function listOperators(): Operator[] {
-  return operators;
+  seedDemoDataIfEmpty();
+  return getDb()
+    .prepare("SELECT id, name, avatar_initials AS avatarInitials, online FROM operators")
+    .all()
+    .map((row) => ({
+      ...(row as Operator),
+      online: Boolean((row as { online: number }).online),
+    }));
 }
 
 export function listConversations(channel?: Channel | "all"): Conversation[] {
-  const filtered =
+  seedDemoDataIfEmpty();
+  const rows =
     channel && channel !== "all"
-      ? conversations.filter((c) => c.channel === channel)
-      : conversations;
-
-  return [...filtered].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
+      ? (getDb()
+          .prepare(
+            "SELECT * FROM conversations WHERE channel = ? ORDER BY updated_at DESC",
+          )
+          .all(channel) as ConversationRow[])
+      : (getDb()
+          .prepare("SELECT * FROM conversations ORDER BY updated_at DESC")
+          .all() as ConversationRow[]);
+  return rows.map(rowToConversation);
 }
 
 export function getConversationDetail(id: string): ConversationDetail | null {
-  const conversation = conversations.find((c) => c.id === id);
-  if (!conversation) return null;
+  const row = getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(id) as ConversationRow | undefined;
+  if (!row) return null;
 
+  const conversation = rowToConversation(row);
   const contact = getContact(conversation.contactId);
   if (!contact) return null;
 
-  const convMessages = messages
-    .filter((m) => m.conversationId === id)
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+  const messageRows = getDb()
+    .prepare(
+      "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+    )
+    .all(id) as MessageRow[];
 
   return {
     ...conversation,
     contact,
-    messages: convMessages,
+    messages: messageRows.map(rowToMessage),
     assignedOperator: conversation.assignedTo
       ? getOperator(conversation.assignedTo)
       : undefined,
@@ -368,28 +387,48 @@ export function getConversationDetail(id: string): ConversationDetail | null {
 }
 
 export function markConversationRead(id: string): void {
-  conversations = conversations.map((c) =>
-    c.id === id ? { ...c, unreadCount: 0 } : c,
-  );
+  getDb()
+    .prepare("UPDATE conversations SET unread_count = 0 WHERE id = ?")
+    .run(id);
 }
 
 export function processIncomingMessage(
   payload: IncomingMessagePayload,
 ): { message: Message; conversation: Conversation; created: boolean } | null {
-  if (processedExternalIds.has(payload.externalMessageId)) {
+  seedDemoDataIfEmpty();
+
+  if (payload.channel === "max") {
+    registerMaxKnownChat({
+      chatId: payload.externalThreadId,
+      contactName: payload.senderName,
+      source: "incoming",
+    });
+  }
+
+  const existingProcessed = getDb()
+    .prepare(
+      "SELECT 1 FROM processed_external_ids WHERE channel = ? AND external_message_id = ?",
+    )
+    .get(payload.channel, payload.externalMessageId);
+
+  if (existingProcessed) {
     const existing = findConversationByExternalThread(
       payload.channel,
       payload.externalThreadId,
     );
     if (!existing) return null;
-    const lastMessage = messages
-      .filter((m) => m.externalId === payload.externalMessageId)
-      .at(-1);
+    const lastMessage = getDb()
+      .prepare(
+        "SELECT * FROM messages WHERE external_id = ? AND conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(payload.externalMessageId, existing.id) as MessageRow | undefined;
     if (!lastMessage) return null;
-    return { message: lastMessage, conversation: existing, created: false };
+    return {
+      message: rowToMessage(lastMessage),
+      conversation: existing,
+      created: false,
+    };
   }
-
-  processedExternalIds.add(payload.externalMessageId);
 
   let conversation = findConversationByExternalThread(
     payload.channel,
@@ -404,11 +443,14 @@ export function processIncomingMessage(
     );
     if (!contact) {
       contact = createContactFromInbound(payload);
-    } else if (!contact.channelUserIds?.[payload.channel]) {
-      contact.channelUserIds = {
-        ...contact.channelUserIds,
-        [payload.channel]: payload.externalThreadId,
-      };
+    } else {
+      if (!contact.channelUserIds?.[payload.channel]) {
+        contact.channelUserIds = {
+          ...contact.channelUserIds,
+          [payload.channel]: payload.externalThreadId,
+        };
+        upsertContact(contact);
+      }
     }
 
     conversation = createConversation(
@@ -418,20 +460,23 @@ export function processIncomingMessage(
       payload.content,
     );
     created = true;
-
-    const assignedId = autoAssignOperator(conversation.id);
-    if (assignedId) {
-      conversation =
-        conversations.find((c) => c.id === conversation!.id) ?? conversation;
-    }
+    autoAssignOperator(conversation.id);
+    conversation =
+      findConversationByExternalThread(
+        payload.channel,
+        payload.externalThreadId,
+      ) ?? conversation;
   } else if (!conversation.assignedTo) {
     autoAssignOperator(conversation.id);
     conversation =
-      conversations.find((c) => c.id === conversation!.id) ?? conversation;
+      findConversationByExternalThread(
+        payload.channel,
+        payload.externalThreadId,
+      ) ?? conversation;
   }
 
   const message: Message = {
-    id: `m-${Date.now()}`,
+    id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     conversationId: conversation.id,
     content: payload.content,
     direction: "in",
@@ -440,20 +485,30 @@ export function processIncomingMessage(
     createdAt: new Date().toISOString(),
   };
 
-  messages.push(message);
+  const tx = getDb().transaction(() => {
+    getDb()
+      .prepare(
+        "INSERT INTO processed_external_ids (channel, external_message_id) VALUES (?, ?)",
+      )
+      .run(payload.channel, payload.externalMessageId);
+    insertMessage(message);
+    getDb()
+      .prepare(
+        `UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?`,
+      )
+      .run(payload.content, message.createdAt, conversation!.id);
+  });
+  tx();
 
-  conversations = conversations.map((c) =>
-    c.id === conversation!.id
-      ? {
-          ...c,
-          lastMessagePreview: payload.content,
-          updatedAt: message.createdAt,
-          unreadCount: c.unreadCount + 1,
-        }
-      : c,
-  );
-
-  return { message, conversation: conversations.find((c) => c.id === conversation!.id)!, created };
+  return {
+    message,
+    conversation:
+      findConversationByExternalThread(
+        payload.channel,
+        payload.externalThreadId,
+      )!,
+    created,
+  };
 }
 
 export function findOrCreateMaxConversation(input: {
@@ -462,11 +517,15 @@ export function findOrCreateMaxConversation(input: {
   senderName: string;
   preview: string;
 }): Conversation {
-  let conversation = findConversationByExternalThread("max", input.chatId);
+  registerMaxKnownChat({
+    chatId: input.chatId,
+    userId: input.userId,
+    contactName: input.senderName,
+    source: "history",
+  });
 
-  if (conversation) {
-    return conversation;
-  }
+  let conversation = findConversationByExternalThread("max", input.chatId);
+  if (conversation) return conversation;
 
   let contact = input.userId
     ? findContactByChannelUser("max", input.userId)
@@ -480,9 +539,7 @@ export function findOrCreateMaxConversation(input: {
       dealStage: "new",
       channelUserIds: input.userId ? { max: input.userId } : undefined,
     };
-    contacts.push(contact);
-  } else if (input.userId && !contact.channelUserIds?.max) {
-    contact.channelUserIds = { ...contact.channelUserIds, max: input.userId };
+    upsertContact(contact);
   }
 
   conversation = createConversation(
@@ -491,9 +548,10 @@ export function findOrCreateMaxConversation(input: {
     input.chatId,
     input.preview,
   );
-
   autoAssignOperator(conversation.id);
-  return conversations.find((c) => c.id === conversation!.id) ?? conversation;
+  return (
+    findConversationByExternalThread("max", input.chatId) ?? conversation
+  );
 }
 
 export function importHistoricalMessages(
@@ -508,55 +566,46 @@ export function importHistoricalMessages(
   let imported = 0;
   let skipped = 0;
 
-  const existingExternalIds = new Set(
-    messages
-      .filter((m) => m.conversationId === conversationId && m.externalId)
-      .map((m) => m.externalId as string),
-  );
+  const tx = getDb().transaction(() => {
+    for (const item of items) {
+      const exists = getDb()
+        .prepare(
+          "SELECT 1 FROM messages WHERE conversation_id = ? AND external_id = ?",
+        )
+        .get(conversationId, item.externalId);
+      if (exists) {
+        skipped += 1;
+        continue;
+      }
 
-  for (const item of items) {
-    if (
-      processedExternalIds.has(item.externalId) ||
-      existingExternalIds.has(item.externalId)
-    ) {
-      skipped += 1;
-      continue;
+      insertMessage({
+        id: `m-hist-${item.externalId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40)}`,
+        conversationId,
+        content: item.content,
+        direction: item.direction,
+        status: item.direction === "out" ? "delivered" : "read",
+        externalId: item.externalId,
+        createdAt: item.createdAt,
+      });
+      imported += 1;
     }
 
-    processedExternalIds.add(item.externalId);
-    existingExternalIds.add(item.externalId);
-
-    messages.push({
-      id: `m-hist-${item.externalId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40)}`,
-      conversationId,
-      content: item.content,
-      direction: item.direction,
-      status: item.direction === "out" ? "delivered" : "read",
-      externalId: item.externalId,
-      createdAt: item.createdAt,
-    });
-    imported += 1;
-  }
-
-  if (imported > 0) {
-    const convMessages = messages
-      .filter((m) => m.conversationId === conversationId)
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-    const latest = convMessages[convMessages.length - 1];
-
-    conversations = conversations.map((c) =>
-      c.id === conversationId
-        ? {
-            ...c,
-            lastMessagePreview: latest.content,
-            updatedAt: latest.createdAt,
-          }
-        : c,
-    );
-  }
+    if (imported > 0) {
+      const latest = getDb()
+        .prepare(
+          "SELECT content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(conversationId) as { content: string; created_at: string } | undefined;
+      if (latest) {
+        getDb()
+          .prepare(
+            "UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?",
+          )
+          .run(latest.content, latest.created_at, conversationId);
+      }
+    }
+  });
+  tx();
 
   return { imported, skipped };
 }
@@ -566,11 +615,14 @@ export async function sendMessage(
   content: string,
   operatorId?: string,
 ): Promise<{ message: Message | null; error?: string }> {
-  const conversation = conversations.find((c) => c.id === conversationId);
-  if (!conversation || !content.trim()) {
+  const row = getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(conversationId) as ConversationRow | undefined;
+  if (!row || !content.trim()) {
     return { message: null, error: "Диалог не найден" };
   }
 
+  const conversation = rowToConversation(row);
   const senderId = operatorId ?? conversation.assignedTo ?? "op-1";
 
   const message: Message = {
@@ -583,18 +635,12 @@ export async function sendMessage(
     createdAt: new Date().toISOString(),
   };
 
-  messages.push(message);
-
-  conversations = conversations.map((c) =>
-    c.id === conversationId
-      ? {
-          ...c,
-          lastMessagePreview: content.trim(),
-          updatedAt: message.createdAt,
-          unreadCount: 0,
-        }
-      : c,
-  );
+  insertMessage(message);
+  getDb()
+    .prepare(
+      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = 0 WHERE id = ?",
+    )
+    .run(content.trim(), message.createdAt, conversationId);
 
   if (conversation.externalThreadId) {
     const result = await dispatchOutboundMessage({
@@ -603,12 +649,9 @@ export async function sendMessage(
       content: content.trim(),
     });
 
-    const status: Message["status"] = result.ok ? "delivered" : "failed";
-    message.status = status;
+    message.status = result.ok ? "delivered" : "failed";
     if (result.externalId) message.externalId = result.externalId;
-
-    const index = messages.findIndex((m) => m.id === message.id);
-    if (index >= 0) messages[index] = { ...message };
+    updateMessage(message);
 
     if (!result.ok) {
       return { message, error: result.error ?? "Не удалось отправить сообщение" };
@@ -628,6 +671,14 @@ export async function startOutboundConversation(params: {
 }): Promise<{ conversation: Conversation; message: Message; error?: string } | null> {
   const trimmed = params.content.trim();
   if (!trimmed) return null;
+
+  if (params.channel === "max") {
+    registerMaxKnownChat({
+      chatId: params.externalThreadId,
+      contactName: params.contactName,
+      source: "outbound",
+    });
+  }
 
   let conversation = findConversationByExternalThread(
     params.channel,
@@ -649,7 +700,7 @@ export async function startOutboundConversation(params: {
         channelUserIds: { [params.channel]: params.externalThreadId },
         notes: params.username ? `@${params.username}` : undefined,
       };
-      contacts.push(contact);
+      upsertContact(contact);
     }
 
     conversation = createConversation(
@@ -658,11 +709,13 @@ export async function startOutboundConversation(params: {
       params.externalThreadId,
       trimmed,
     );
-
     if (!conversation.assignedTo) {
       autoAssignOperator(conversation.id);
       conversation =
-        conversations.find((c) => c.id === conversation!.id) ?? conversation;
+        findConversationByExternalThread(
+          params.channel,
+          params.externalThreadId,
+        ) ?? conversation;
     }
   }
 
@@ -675,7 +728,11 @@ export async function startOutboundConversation(params: {
   if (!message) return null;
 
   return {
-    conversation: conversations.find((c) => c.id === conversation!.id)!,
+    conversation:
+      findConversationByExternalThread(
+        params.channel,
+        params.externalThreadId,
+      )!,
     message,
     error,
   };
@@ -685,30 +742,34 @@ export function assignConversation(
   conversationId: string,
   operatorId: string | null,
 ): Conversation | null {
-  const conversation = conversations.find((c) => c.id === conversationId);
-  if (!conversation) return null;
+  const row = getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(conversationId) as ConversationRow | undefined;
+  if (!row) return null;
 
-  const updated = {
-    ...conversation,
-    assignedTo: operatorId ?? undefined,
-    autoAssigned: false,
-  };
+  getDb()
+    .prepare(
+      "UPDATE conversations SET assigned_to = ?, auto_assigned = 0 WHERE id = ?",
+    )
+    .run(operatorId, conversationId);
 
-  conversations = conversations.map((c) =>
-    c.id === conversationId ? updated : c,
-  );
-
-  return updated;
+  return rowToConversation({
+    ...row,
+    assigned_to: operatorId,
+    auto_assigned: 0,
+  });
 }
 
 export function simulateIncomingMessage(
   conversationId: string,
   content: string,
 ): Message | null {
-  const conversation = conversations.find((c) => c.id === conversationId);
-  if (!conversation || !content.trim()) return null;
+  const row = getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(conversationId) as ConversationRow | undefined;
+  if (!row || !content.trim()) return null;
 
-  if (!conversation.assignedTo) {
+  if (!row.assigned_to) {
     autoAssignOperator(conversationId);
   }
 
@@ -721,38 +782,50 @@ export function simulateIncomingMessage(
     createdAt: new Date().toISOString(),
   };
 
-  messages.push(message);
-
-  conversations = conversations.map((c) =>
-    c.id === conversationId
-      ? {
-          ...c,
-          lastMessagePreview: content.trim(),
-          updatedAt: message.createdAt,
-          unreadCount: c.unreadCount + 1,
-        }
-      : c,
-  );
+  insertMessage(message);
+  getDb()
+    .prepare(
+      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?",
+    )
+    .run(content.trim(), message.createdAt, conversationId);
 
   return message;
 }
 
 export function getStats() {
-  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
-  const byChannel = ALL_CHANNELS.map((ch) => ({
-    channel: ch,
-    count: conversations.filter((c) => c.channel === ch).length,
-    unread: conversations
-      .filter((c) => c.channel === ch)
-      .reduce((sum, c) => sum + c.unreadCount, 0),
-  }));
+  seedDemoDataIfEmpty();
+  const totalUnread = (
+    getDb()
+      .prepare("SELECT COALESCE(SUM(unread_count), 0) AS total FROM conversations")
+      .get() as { total: number }
+  ).total;
 
-  const unassigned = conversations.filter((c) => !c.assignedTo).length;
+  const byChannel = ALL_CHANNELS.map((ch) => {
+    const stats = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS count, COALESCE(SUM(unread_count), 0) AS unread FROM conversations WHERE channel = ?",
+      )
+      .get(ch) as { count: number; unread: number };
+    return { channel: ch, count: stats.count, unread: stats.unread };
+  });
+
+  const unassigned = (
+    getDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM conversations WHERE assigned_to IS NULL",
+      )
+      .get() as { count: number }
+  ).count;
 
   return {
     totalUnread,
-    totalConversations: conversations.length,
+    totalConversations: listConversations().length,
     unassigned,
     byChannel,
   };
+}
+
+// Touch DB on module load in Node runtime.
+if (typeof window === "undefined") {
+  getDb();
 }

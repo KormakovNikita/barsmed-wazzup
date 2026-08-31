@@ -7,6 +7,7 @@ import {
   findOrCreateMaxConversation,
   importHistoricalMessages,
   listConversations,
+  listMaxKnownChatIds,
 } from "@/lib/store";
 
 export interface MaxHistoryMessage {
@@ -179,6 +180,10 @@ export async function syncAllMaxHistory(options?: {
     if (conv.externalThreadId) {
       knownChatIds.add(conv.externalThreadId);
     }
+  }
+
+  for (const chatId of listMaxKnownChatIds()) {
+    knownChatIds.add(chatId);
   }
 
   for (const chatId of options?.chatIds ?? []) {

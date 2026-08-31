@@ -60,15 +60,29 @@ export function MaxConnectPanel() {
       const res = await fetch("/api/integrations/max/sync-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ source: "all" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации");
 
-      setMessage(
-        `История загружена: ${data.imported} сообщений в ${data.conversations} диалогах` +
-          (data.skipped ? ` (${data.skipped} уже были)` : ""),
-      );
+      const max = data.results?.max;
+      const wazzup = data.results?.wazzup;
+
+      const parts: string[] = [];
+      if (max?.details?.length) {
+        parts.push(
+          `MAX: ${max.imported} сообщений в ${max.conversations} диалогах`,
+        );
+      }
+      if (wazzup?.ok) {
+        parts.push(
+          `Wazzup: ${wazzup.imported} сообщений, ${wazzup.chats} клиентов`,
+        );
+      } else if (wazzup?.skipped) {
+        parts.push("Wazzup: не настроен (нужен WAZZUP_API_KEY)");
+      }
+
+      setMessage(parts.join(". ") || "Синхронизация завершена");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -177,9 +191,11 @@ export function MaxConnectPanel() {
             )}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Подтягивает старые сообщения из MAX для всех диалогов, которые уже
-            есть в HubDesk. Диалоги, которые были только в Wazzup, нужно сначала
-            «поймать» новым сообщением от клиента.
+            Загружает историю из MAX API для всех известных диалогов. Чтобы
+            подтянуть <strong>всех</strong> клиентов, которые писали раньше
+            через Wazzup, добавьте <code>WAZZUP_API_KEY</code> в{" "}
+            <code>.env.local</code> (API-ключ из личного кабинета Wazzup →
+            Интеграция → API).
           </p>
         </div>
       ) : status?.configured ? (

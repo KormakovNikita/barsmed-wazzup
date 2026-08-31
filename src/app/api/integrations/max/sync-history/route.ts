@@ -1,46 +1,37 @@
 import { NextResponse } from "next/server";
-import { isMaxConfigured } from "@/lib/integrations/max";
-import { syncAllMaxHistory, syncMaxChatHistory } from "@/lib/integrations/max-history";
+import { syncAllMaxHistory } from "@/lib/integrations/max-history";
+import {
+  importWazzupMaxHistory,
+  isWazzupConfigured,
+} from "@/lib/integrations/wazzup-import";
 
 export async function POST(request: Request) {
-  if (!isMaxConfigured()) {
-    return NextResponse.json(
-      { error: "MAX_BOT_TOKEN не задан" },
-      { status: 400 },
-    );
-  }
-
   const body = (await request.json().catch(() => ({}))) as {
-    chatId?: string;
+    source?: "max" | "wazzup" | "all";
     chatIds?: string[];
   };
 
-  if (body.chatId) {
-    const result = await syncMaxChatHistory(body.chatId);
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 500 });
+  const source = body.source ?? "all";
+  const results: Record<string, unknown> = {};
+
+  if (source === "wazzup" || source === "all") {
+    if (isWazzupConfigured()) {
+      results.wazzup = await importWazzupMaxHistory();
+    } else if (source === "wazzup") {
+      return NextResponse.json(
+        { error: "WAZZUP_API_KEY не задан" },
+        { status: 400 },
+      );
+    } else {
+      results.wazzup = { skipped: true, reason: "WAZZUP_API_KEY не задан" };
     }
-    return NextResponse.json(result);
   }
 
-  const result = await syncAllMaxHistory({ chatIds: body.chatIds });
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
+  if (source === "max" || source === "all") {
+    results.max = await syncAllMaxHistory({
+      chatIds: body.chatIds,
+    });
   }
 
-  const totals = result.synced.reduce(
-    (acc, item) => ({
-      imported: acc.imported + item.imported,
-      skipped: acc.skipped + item.skipped,
-      totalFetched: acc.totalFetched + item.totalFetched,
-    }),
-    { imported: 0, skipped: 0, totalFetched: 0 },
-  );
-
-  return NextResponse.json({
-    ok: true,
-    conversations: result.synced.length,
-    ...totals,
-    details: result.synced,
-  });
+  return NextResponse.json({ ok: true, results });
 }
