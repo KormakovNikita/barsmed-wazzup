@@ -641,15 +641,7 @@ export function mergeDuplicateMaxConversations(): number {
 
   const groups = new Map<string, typeof rows>();
   for (const row of rows) {
-    let userId: string | undefined;
-    if (row.channel_user_ids) {
-      try {
-        userId = (JSON.parse(row.channel_user_ids) as { max?: string }).max;
-      } catch {
-        userId = undefined;
-      }
-    }
-    const key = userId ?? row.name.toLowerCase().trim();
+    const key = row.name.toLowerCase().trim();
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
