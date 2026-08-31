@@ -78,6 +78,8 @@ export interface IncomingMessagePayload {
   maxChatId?: string;
   /** MAX: sender user_id (for delivery and dedup) */
   maxUserId?: string;
+  /** in = from client, out = from bot/operator */
+  direction?: "in" | "out";
 }
 
 export interface OutboundMessagePayload {

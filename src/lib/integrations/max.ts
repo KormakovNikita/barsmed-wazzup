@@ -198,9 +198,32 @@ export function parseMaxUpdate(update: MaxUpdate) {
   }
 
   const sender = update.message.sender;
-  if (!sender || sender.is_bot) return null;
+  if (!sender) return null;
 
-  const chatId = update.message.recipient?.chat_id;
+  const recipient = update.message.recipient;
+  const chatId = recipient?.chat_id;
+
+  if (sender.is_bot) {
+    const customerUserId = recipient?.user_id;
+    const threadId = chatId
+      ? String(chatId)
+      : customerUserId
+        ? String(customerUserId)
+        : null;
+    if (!threadId) return null;
+
+    return {
+      externalThreadId: threadId,
+      maxChatId: chatId ? String(chatId) : undefined,
+      maxUserId: customerUserId ? String(customerUserId) : undefined,
+      externalMessageId: `max-${update.message.body.mid ?? update.timestamp}`,
+      content: update.message.body.text,
+      senderName: sender.first_name ?? "БАРСМЕД",
+      senderUsername: sender.username,
+      direction: "out" as const,
+    };
+  }
+
   const userId = String(sender.user_id);
   const threadId = chatId ? String(chatId) : userId;
 
@@ -217,6 +240,7 @@ export function parseMaxUpdate(update: MaxUpdate) {
     content: update.message.body.text,
     senderName: name || sender.username || "MAX user",
     senderUsername: sender.username,
+    direction: "in" as const,
   };
 }
 

@@ -527,7 +527,13 @@ export function processIncomingMessage(
       findConversationByExternalThread("max", maxChatId) ?? conversation;
   }
 
+  const isOutbound = payload.direction === "out";
+
   if (!conversation) {
+    if (isOutbound) {
+      return null;
+    }
+
     let contact =
       payload.channel === "max" && maxUserId
         ? findContactByChannelUser("max", maxUserId)
@@ -582,13 +588,35 @@ export function processIncomingMessage(
       conversation;
   }
 
+  const externalMid = payload.externalMessageId.replace(/^max-/, "");
+  const duplicateOutbound = getDb()
+    .prepare(
+      "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
+    )
+    .get(conversation!.id, externalMid) as MessageRow | undefined;
+
+  if (duplicateOutbound) {
+    getDb()
+      .prepare(
+        "INSERT OR IGNORE INTO processed_external_ids (channel, external_message_id) VALUES (?, ?)",
+      )
+      .run(payload.channel, payload.externalMessageId);
+    return {
+      message: rowToMessage(duplicateOutbound),
+      conversation: conversation!,
+      created: false,
+    };
+  }
+
   const message: Message = {
     id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    conversationId: conversation.id,
+    conversationId: conversation!.id,
     content: payload.content,
-    direction: "in",
-    status: "delivered",
-    externalId: payload.externalMessageId,
+    direction: isOutbound ? "out" : "in",
+    status: isOutbound ? "delivered" : "delivered",
+    externalId: payload.externalMessageId.replace(/^max-/, "").startsWith("mid.")
+      ? payload.externalMessageId.replace(/^max-/, "")
+      : payload.externalMessageId,
     createdAt: new Date().toISOString(),
   };
 
@@ -601,7 +629,9 @@ export function processIncomingMessage(
     insertMessage(message);
     getDb()
       .prepare(
-        `UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?`,
+        isOutbound
+          ? `UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?`
+          : `UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?`,
       )
       .run(payload.content, message.createdAt, conversation!.id);
   });
@@ -671,6 +701,17 @@ export function mergeDuplicateMaxConversations(): number {
           preview = dup.last_message_preview;
         }
         db.prepare("DELETE FROM conversations WHERE id = ?").run(dup.id);
+        // Reassign messages still on duplicate contact, then remove orphan contact
+        const orphanMessages = (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS count FROM conversations WHERE contact_id = ?",
+            )
+            .get(dup.contact_id) as { count: number }
+        ).count;
+        if (orphanMessages === 0) {
+          db.prepare("DELETE FROM contacts WHERE id = ?").run(dup.contact_id);
+        }
         merged += 1;
       }
 
@@ -822,7 +863,17 @@ export async function sendMessage(
     });
 
     message.status = result.ok ? "delivered" : "failed";
-    if (result.externalId) message.externalId = result.externalId;
+    if (result.externalId) {
+      message.externalId = result.externalId;
+      getDb()
+        .prepare(
+          "INSERT OR IGNORE INTO processed_external_ids (channel, external_message_id) VALUES (?, ?)",
+        )
+        .run(
+          conversation.channel,
+          `max-${result.externalId}`,
+        );
+    }
     updateMessage(message);
 
     if (!result.ok) {

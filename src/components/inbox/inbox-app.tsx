@@ -134,22 +134,15 @@ export function InboxApp() {
         (integrationStatus?.max.configured &&
           integrationStatus.max.mode === "polling");
 
-      let hasNewEvents = false;
       if (shouldPoll) {
-        const pollRes = await fetch("/api/integrations/poll", {
-          method: "POST",
-        });
-        if (pollRes.ok) {
-          const pollData = (await pollRes.json()) as { processed?: number };
-          hasNewEvents = (pollData.processed ?? 0) > 0;
-        }
+        await fetch("/api/integrations/poll", { method: "POST" });
       }
 
-      if (hasNewEvents) {
-        await fetchConversations();
-        if (selectedId) {
-          await fetchConversationDetail(selectedId, { silent: true });
-        }
+      // Refresh even when poll returns 0 — colleagues may send from another browser
+      // while server-side MAX polling already consumed those updates.
+      await fetchConversations();
+      if (selectedId) {
+        await fetchConversationDetail(selectedId, { silent: true });
       }
 
       fetchStats();
