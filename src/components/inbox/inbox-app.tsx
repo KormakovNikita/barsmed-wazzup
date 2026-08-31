@@ -91,18 +91,26 @@ export function InboxApp() {
     }
   }, [activeChannel]);
 
-  const fetchConversationDetail = useCallback(async (id: string) => {
-    setLoadingDetail(true);
-    try {
-      const res = await fetch(`/api/conversations/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setConversationDetail(data.conversation);
+  const fetchConversationDetail = useCallback(
+    async (id: string, options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setLoadingDetail(true);
       }
-    } finally {
-      setLoadingDetail(false);
-    }
-  }, []);
+      try {
+        const res = await fetch(`/api/conversations/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setConversationDetail(data.conversation);
+        }
+      } finally {
+        if (!silent) {
+          setLoadingDetail(false);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     setLoadingConversations(true);
@@ -126,12 +134,25 @@ export function InboxApp() {
         (integrationStatus?.max.configured &&
           integrationStatus.max.mode === "polling");
 
+      let hasNewEvents = false;
       if (shouldPoll) {
-        await fetch("/api/integrations/poll", { method: "POST" });
+        const pollRes = await fetch("/api/integrations/poll", {
+          method: "POST",
+        });
+        if (pollRes.ok) {
+          const pollData = (await pollRes.json()) as { processed?: number };
+          hasNewEvents = (pollData.processed ?? 0) > 0;
+        }
       }
-      fetchConversations();
+
+      if (hasNewEvents) {
+        await fetchConversations();
+        if (selectedId) {
+          await fetchConversationDetail(selectedId, { silent: true });
+        }
+      }
+
       fetchStats();
-      if (selectedId) fetchConversationDetail(selectedId);
     }, 5000);
     return () => clearInterval(interval);
   }, [
@@ -252,7 +273,7 @@ export function InboxApp() {
         <div className="flex min-h-0 flex-1">
           <ChatPanel
             conversation={conversationDetail}
-            loading={loadingDetail && !!selectedId}
+            loading={loadingDetail && !conversationDetail}
             onSendMessage={handleSendMessage}
             onSimulateIncoming={handleSimulateIncoming}
             sendError={sendError}

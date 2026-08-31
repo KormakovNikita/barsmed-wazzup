@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Search } from "lucide-react";
@@ -33,6 +34,9 @@ export function ConversationList({
   loading = false,
   error = null,
 }: ConversationListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrollTopRef = useRef(0);
+
   const filtered = conversations.filter((conv) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -41,8 +45,33 @@ export function ConversationList({
     return name.includes(q) || preview.includes(q);
   });
 
+  useEffect(() => {
+    const viewport = listRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLElement | null;
+    if (!viewport) return;
+
+    const handleScroll = () => {
+      scrollTopRef.current = viewport.scrollTop;
+    };
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => viewport.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const viewport = listRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLElement | null;
+    if (!viewport) return;
+
+    requestAnimationFrame(() => {
+      viewport.scrollTop = scrollTopRef.current;
+    });
+  }, [filtered]);
+
   return (
-    <div className="flex h-full flex-col border-r bg-card">
+    <div ref={listRef} className="flex h-full flex-col border-r bg-card">
       <div className="border-b p-3">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -77,7 +106,8 @@ export function ConversationList({
                   onClick={() => onSelect(conv.id)}
                   className={cn(
                     "flex w-full gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
-                    selectedId === conv.id && "bg-accent",
+                    selectedId === conv.id &&
+                      "border-l-2 border-l-primary bg-accent",
                   )}
                 >
                   <div className="relative shrink-0">

@@ -42,10 +42,23 @@ export function ChatPanel({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messageCountRef = useRef(0);
+  const conversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation?.messages]);
+    if (conversation?.id !== conversationIdRef.current) {
+      conversationIdRef.current = conversation?.id ?? null;
+      messageCountRef.current = conversation?.messages.length ?? 0;
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+
+    const count = conversation?.messages.length ?? 0;
+    if (count > messageCountRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    messageCountRef.current = count;
+  }, [conversation?.id, conversation?.messages]);
 
   async function handleSend() {
     if (!draft.trim() || sending) return;
