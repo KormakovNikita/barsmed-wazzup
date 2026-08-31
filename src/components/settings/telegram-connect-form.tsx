@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,20 +14,30 @@ interface TelegramProfile {
 }
 
 export function TelegramConnectForm() {
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [authId, setAuthId] = useState<string | null>(null);
-  const [needsPassword, setNeedsPassword] = useState(false);
-  const [isCodeViaApp, setIsCodeViaApp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<TelegramProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState<"phone" | "code" | "password">("phone");
   const [apiId, setApiId] = useState("");
   const [apiHash, setApiHash] = useState("");
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
+  const [qrAuthId, setQrAuthId] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<string | null>(null);
+  const [passwordHint, setPasswordHint] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadProfile = useCallback(() => {
+    fetch("/api/integrations/telegram/auth/status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.connected && data.profile) {
+          setProfile(data.profile);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/integrations/telegram/credentials")
@@ -39,14 +49,13 @@ export function TelegramConnectForm() {
       .catch(() => {})
       .finally(() => setLoadingCredentials(false));
 
-    fetch("/api/integrations/telegram/auth/status")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.connected && data.profile) {
-          setProfile(data.profile);
-        }
-      })
-      .catch(() => {});
+    loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   async function handleSaveCredentials() {
@@ -68,21 +77,50 @@ export function TelegramConnectForm() {
     }
   }
 
-  async function handleSendCode() {
+  async function pollQrStatus(authId: string) {
+    const res = await fetch(
+      `/api/integrations/telegram/auth/qr?authId=${encodeURIComponent(authId)}`,
+    );
+    const data = await res.json();
+
+    if (data.status === "expired") {
+      setQrStatus("expired");
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+
+    setQrStatus(data.status);
+    if (data.qrDataUrl) setQrDataUrl(data.qrDataUrl);
+    if (data.passwordHint) setPasswordHint(data.passwordHint);
+    if (data.error) setError(data.error);
+
+    if (data.status === "complete") {
+      if (pollRef.current) clearInterval(pollRef.current);
+      setQrAuthId(null);
+      loadProfile();
+    }
+  }
+
+  async function handleStartQr() {
     setLoading(true);
     setError(null);
+    setQrDataUrl(null);
+    setPasswordHint(null);
+    setPassword("");
+
     try {
-      const res = await fetch("/api/integrations/telegram/auth/send-code", {
+      const res = await fetch("/api/integrations/telegram/auth/qr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber: phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
 
-      setAuthId(data.authId);
-      setIsCodeViaApp(data.isCodeViaApp);
-      setStep("code");
+      setQrAuthId(data.authId);
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(() => {
+        void pollQrStatus(data.authId);
+      }, 2000);
+      await pollQrStatus(data.authId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -90,34 +128,18 @@ export function TelegramConnectForm() {
     }
   }
 
-  async function handleSignIn() {
-    if (!authId) return;
+  async function handleSubmitPassword() {
+    if (!qrAuthId || !password.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/integrations/telegram/auth/sign-in", {
+      const res = await fetch("/api/integrations/telegram/auth/qr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          authId,
-          code,
-          password: needsPassword ? password : undefined,
-        }),
+        body: JSON.stringify({ authId: qrAuthId, password: password.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
-
-      if (data.needsPassword) {
-        setNeedsPassword(true);
-        setStep("password");
-        return;
-      }
-
-      setProfile(data.profile);
-      setStep("phone");
-      setAuthId(null);
-      setCode("");
-      setPassword("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -133,7 +155,8 @@ export function TelegramConnectForm() {
         method: "DELETE",
       });
       setProfile(null);
-      setStep("phone");
+      setQrAuthId(null);
+      setQrDataUrl(null);
     } catch {
       setError("Не удалось отключить аккаунт");
     } finally {
@@ -153,8 +176,8 @@ export function TelegramConnectForm() {
           </p>
         </div>
         <p className="text-xs text-muted-foreground">
-          Сообщения клиентам отправляются от имени этого аккаунта компании, а не
-          через бота.
+          Клиенты пишут в этот аккаунт компании — сообщения приходят во
+          «Входящие», ответы уходят от его имени.
         </p>
         <Button variant="outline" onClick={handleDisconnect} disabled={loading}>
           Отключить аккаунт
@@ -165,38 +188,34 @@ export function TelegramConnectForm() {
 
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
-      <div>
-        <p className="font-medium">Подключить Telegram аккаунт компании</p>
-        <p className="text-sm text-muted-foreground">
-          Нужны <code className="text-xs">TELEGRAM_API_ID</code> и{" "}
-          <code className="text-xs">TELEGRAM_API_HASH</code> в{" "}
-          <code className="text-xs">.env.local</code> и{" "}
-          <code className="text-xs">TELEGRAM_MODE=user</code>.
+      <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
+        <p className="font-medium">Почему в Wazzup не нужен был API?</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          Wazzup — платный посредник: у них уже зарегистрировано приложение в
+          Telegram, вы только сканировали QR. HubDesk подключается напрямую —
+          нужны API-ключи приложения <strong>один раз</strong> (как «паспорт»
+          программы), дальше только QR.
         </p>
-        <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-          <p className="font-medium">my.telegram.org выдаёт Error?</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            <li>Попробуйте через VPN (не российский IP)</li>
-            <li>Откройте с телефона через мобильный интернет</li>
-            <li>Другой браузер или режим инкогнито</li>
-            <li>
-              Попросите коллегу за рубежом создать приложение и прислать API ID /
-              Hash
-            </li>
-            <li>
-              Или используйте{" "}
-              <strong>режим бота</strong> выше — он работает без my.telegram.org
-            </li>
-          </ul>
-        </div>
       </div>
 
       {!loadingCredentials && !credentialsSaved && (
         <div className="space-y-3 rounded-md border bg-muted/40 p-3">
-          <p className="text-sm font-medium">Шаг 1: API ID и Hash</p>
+          <p className="text-sm font-medium">
+            Шаг 1 — API ID и Hash (один раз)
+          </p>
           <p className="text-xs text-muted-foreground">
-            Получите на my.telegram.org через VPN (см. подсказку выше) или
-            попросите коллегу за рубежом.
+            Получите на{" "}
+            <a
+              href="https://my.telegram.org"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              my.telegram.org
+            </a>{" "}
+            через VPN (не российский IP) → API development tools → Create
+            application. Если сайт выдаёт Error — другой VPN, мобильный интернет
+            или попросите знакомого за рубежом создать и прислать два числа.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -223,71 +242,74 @@ export function TelegramConnectForm() {
             disabled={loading || !apiId.trim() || !apiHash.trim()}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Сохранить API ключи
+            Сохранить ключи
           </Button>
         </div>
       )}
 
-      {credentialsSaved && step === "phone" && (
+      {credentialsSaved && (
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="phone">Номер телефона</Label>
-            <Input
-              id="phone"
-              placeholder="+7 900 123-45-67"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-          <Button onClick={handleSendCode} disabled={loading || !phone.trim()}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Получить код
-          </Button>
-        </div>
-      )}
-
-      {step === "code" && (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Код отправлен {isCodeViaApp ? "в приложение Telegram" : "по SMS"}
+          <p className="text-sm font-medium">Шаг 2 — отсканируйте QR</p>
+          <p className="text-xs text-muted-foreground">
+            На телефоне: Telegram → Настройки → Устройства → Подключить
+            устройство. Сканируйте код рабочего аккаунта компании.
           </p>
-          <div className="space-y-1.5">
-            <Label htmlFor="code">Код подтверждения</Label>
-            <Input
-              id="code"
-              placeholder="12345"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
-          </div>
-          <Button onClick={handleSignIn} disabled={loading || !code.trim()}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Войти
-          </Button>
-        </div>
-      )}
 
-      {step === "password" && (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            На аккаунте включена двухфакторная аутентификация
-          </p>
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Пароль 2FA</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <Button
-            onClick={handleSignIn}
-            disabled={loading || !password.trim()}
-          >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Подтвердить
-          </Button>
+          {!qrAuthId ? (
+            <Button onClick={handleStartQr} disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Показать QR-код
+            </Button>
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              {qrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qrDataUrl}
+                  alt="QR для входа в Telegram"
+                  className="rounded-lg border bg-white p-2"
+                  width={280}
+                  height={280}
+                />
+              ) : (
+                <div className="flex h-[280px] w-[280px] items-center justify-center rounded-lg border bg-muted">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {qrStatus === "needs_password"
+                  ? "Введите пароль 2FA после сканирования"
+                  : "QR обновляется автоматически — не закрывайте страницу"}
+              </p>
+              {qrStatus === "expired" && (
+                <Button variant="outline" size="sm" onClick={handleStartQr}>
+                  Получить новый QR
+                </Button>
+              )}
+            </div>
+          )}
+
+          {qrStatus === "needs_password" && (
+            <div className="space-y-2">
+              {passwordHint && (
+                <p className="text-xs text-muted-foreground">
+                  Подсказка: {passwordHint}
+                </p>
+              )}
+              <Input
+                type="password"
+                placeholder="Пароль 2FA"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <Button
+                onClick={handleSubmitPassword}
+                disabled={loading || !password.trim()}
+              >
+                Подтвердить
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

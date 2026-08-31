@@ -20,32 +20,27 @@ npm run dev -- -p 43123
 
 Откройте [http://localhost:43123/inbox](http://localhost:43123/inbox)
 
-## Telegram — бот (рекомендуется)
+## Telegram — аккаунт компании (через Wazzup)
 
-**Не требует my.telegram.org** — работает через @BotFather.
+**Клиенты пишут в ваш рабочий Telegram, не в бота.** my.telegram.org не нужен.
 
-1. Откройте [@BotFather](https://t.me/BotFather) в Telegram
-2. Отправьте `/newbot` и создайте бота для компании
+1. В [Wazzup](https://wazzup24.com) подключите **личный Telegram** (раздел «Каналы»)
+2. Скопируйте API-ключ: Настройки → Интеграция → API
 3. Добавьте в `.env.local`:
 
 ```
-TELEGRAM_MODE=bot
-TELEGRAM_BOT_TOKEN=123456789:ABCdef...
+TELEGRAM_MODE=wazzup
+WAZZUP_API_KEY=ваш_ключ
+WEBHOOK_BASE_URL=https://lk.mrtkt.ru
 ```
 
-4. Перезапустите приложение
-5. Клиенты пишут боту — диалоги появляются во [Входящих](/inbox)
+4. Перезапустите и нажмите «Зарегистрировать webhook Wazzup» в [Настройках](/settings/integrations)
 
-| Режим | Когда | Что нужно |
-|-------|-------|-----------|
-| **Polling** | Нет HTTPS-домена | Только `TELEGRAM_BOT_TOKEN` |
-| **Webhook** | Есть домен с HTTPS | `WEBHOOK_BASE_URL` + nginx |
+HubDesk получает сообщения через Wazzup webhook и отправляет ответы от имени вашего аккаунта компании.
 
-> Сообщения уходят **от имени бота**, не личного аккаунта сотрудника.
+## Telegram — бот (@BotFather)
 
-## Telegram — личный аккаунт (как Wazzup)
-
-Требует **API ID** и **API Hash** с [my.telegram.org](https://my.telegram.org). Сайт часто недоступен в РФ — используйте VPN или режим бота выше.
+Только если клиенты специально пишут **боту**. Не подходит, если пишут в аккаунт компании.
 
 ```
 TELEGRAM_MODE=user

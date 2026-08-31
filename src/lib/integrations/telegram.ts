@@ -154,6 +154,8 @@ export {
   startTelegramUserListener,
 } from "./telegram-user";
 
+export { startTelegramQrAuth } from "./telegram-user/qr-auth";
+
 export {
   getWazzupTelegramStatus,
   registerWazzupWebhook,

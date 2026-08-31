@@ -36,7 +36,6 @@ export function getTelegramUserMode(): "user" | "bot" | "wazzup" {
   }
   if (getApiCredentials()) return "user";
   if (process.env.TELEGRAM_BOT_TOKEN) return "bot";
-  if (process.env.WAZZUP_API_KEY) return "wazzup";
   return "user";
 }
 
