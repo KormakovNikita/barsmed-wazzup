@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
-import { getConversationDetail } from "@/lib/store";
+import { dismissConversationReply } from "@/lib/store";
 
-export async function GET(
+export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const detail = getConversationDetail(id);
+  const conversation = dismissConversationReply(id);
 
-  if (!detail) {
+  if (!conversation) {
     return NextResponse.json({ error: "Диалог не найден" }, { status: 404 });
   }
 
-  return NextResponse.json({ conversation: detail });
+  return NextResponse.json({ ok: true, conversation });
 }

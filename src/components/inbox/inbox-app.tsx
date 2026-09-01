@@ -253,6 +253,16 @@ export function InboxApp() {
     await fetchConversations();
   }
 
+  async function handleDismissReply() {
+    if (!selectedId) return;
+    await fetch(`/api/conversations/${selectedId}/dismiss`, {
+      method: "POST",
+    });
+    await fetchConversationDetail(selectedId);
+    await fetchConversations();
+    await fetchStats();
+  }
+
   const conversationListProps = {
     conversations,
     selectedId,
@@ -322,6 +332,7 @@ export function InboxApp() {
             onSendMessage={handleSendMessage}
             onDeleteMessage={handleDeleteMessage}
             onSimulateIncoming={handleSimulateIncoming}
+            onDismissReply={handleDismissReply}
             sendError={sendError}
           />
           <ContactPanel

@@ -103,6 +103,8 @@ export interface Conversation {
   assignedTo?: string;
   autoAssigned?: boolean;
   externalThreadId?: string;
+  /** Client wrote last and operator has not replied or dismissed */
+  awaitingReply: boolean;
   unreadCount: number;
   lastMessagePreview: string;
   updatedAt: string;

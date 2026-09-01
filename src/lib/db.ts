@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   assigned_to TEXT,
   auto_assigned INTEGER NOT NULL DEFAULT 0,
   unread_count INTEGER NOT NULL DEFAULT 0,
+  awaiting_reply INTEGER NOT NULL DEFAULT 0,
   last_message_preview TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL
 );
@@ -110,14 +111,51 @@ export function getDb(): Database.Database {
 }
 
 function migrateSchema(database: Database.Database): void {
-  const columns = database
+  const messageColumns = database
     .prepare("PRAGMA table_info(messages)")
     .all() as { name: string }[];
-  const names = new Set(columns.map((column) => column.name));
-  if (!names.has("reply_to_message_id")) {
+  const messageNames = new Set(messageColumns.map((column) => column.name));
+  if (!messageNames.has("reply_to_message_id")) {
     database.exec(
       "ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT",
     );
+  }
+
+  const conversationColumns = database
+    .prepare("PRAGMA table_info(conversations)")
+    .all() as { name: string }[];
+  const conversationNames = new Set(
+    conversationColumns.map((column) => column.name),
+  );
+  if (!conversationNames.has("awaiting_reply")) {
+    database.exec(
+      "ALTER TABLE conversations ADD COLUMN awaiting_reply INTEGER NOT NULL DEFAULT 0",
+    );
+    database.exec(`
+      UPDATE conversations
+      SET awaiting_reply = 1
+      WHERE id IN (
+        SELECT m.conversation_id
+        FROM messages m
+        INNER JOIN (
+          SELECT conversation_id, MAX(created_at) AS max_created
+          FROM messages
+          GROUP BY conversation_id
+        ) latest
+          ON m.conversation_id = latest.conversation_id
+         AND m.created_at = latest.max_created
+        WHERE m.direction = 'in'
+      )
+    `);
+    database.exec(`
+      UPDATE conversations
+      SET unread_count = 1
+      WHERE awaiting_reply = 1 AND unread_count = 0
+    `);
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS idx_conversations_awaiting
+        ON conversations(awaiting_reply DESC, updated_at DESC)
+    `);
   }
 }
 

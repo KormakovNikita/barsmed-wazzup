@@ -43,6 +43,7 @@ type ConversationRow = {
   assigned_to: string | null;
   auto_assigned: number;
   unread_count: number;
+  awaiting_reply: number;
   last_message_preview: string;
   updated_at: string;
 };
@@ -96,10 +97,52 @@ function rowToConversation(row: ConversationRow): Conversation {
     externalThreadId: row.external_thread_id ?? undefined,
     assignedTo: row.assigned_to ?? undefined,
     autoAssigned: row.auto_assigned === 1,
+    awaitingReply: row.awaiting_reply === 1,
     unreadCount: row.unread_count,
     lastMessagePreview: row.last_message_preview,
     updatedAt: row.updated_at,
   };
+}
+
+function bottomConversationSortTimestamp(): string {
+  const row = getDb()
+    .prepare(
+      "SELECT MIN(updated_at) AS min_updated FROM conversations WHERE awaiting_reply = 0",
+    )
+    .get() as { min_updated: string | null };
+
+  if (!row.min_updated) {
+    return new Date(0).toISOString();
+  }
+
+  return new Date(new Date(row.min_updated).getTime() - 1000).toISOString();
+}
+
+function syncAwaitingReplyFromLastMessage(conversationId: string): void {
+  const last = getDb()
+    .prepare(
+      "SELECT direction FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(conversationId) as { direction: "in" | "out" } | undefined;
+
+  if (!last) return;
+
+  if (last.direction === "in") {
+    getDb()
+      .prepare(
+        `UPDATE conversations
+         SET awaiting_reply = 1,
+             unread_count = CASE WHEN unread_count = 0 THEN 1 ELSE unread_count END
+         WHERE id = ?`,
+      )
+      .run(conversationId);
+  } else {
+    getDb()
+      .prepare(
+        "UPDATE conversations SET awaiting_reply = 0 WHERE id = ?",
+      )
+      .run(conversationId);
+  }
 }
 
 function rowToAttachment(row: AttachmentRow): MessageAttachment {
@@ -296,15 +339,16 @@ function upsertConversation(conversation: Conversation): void {
     .prepare(
       `INSERT INTO conversations (
          id, contact_id, channel, external_thread_id, assigned_to, auto_assigned,
-         unread_count, last_message_preview, updated_at
+         unread_count, awaiting_reply, last_message_preview, updated_at
        ) VALUES (
          @id, @contactId, @channel, @externalThreadId, @assignedTo, @autoAssigned,
-         @unreadCount, @lastMessagePreview, @updatedAt
+         @unreadCount, @awaitingReply, @lastMessagePreview, @updatedAt
        )
        ON CONFLICT(id) DO UPDATE SET
          assigned_to = excluded.assigned_to,
          auto_assigned = excluded.auto_assigned,
          unread_count = excluded.unread_count,
+         awaiting_reply = excluded.awaiting_reply,
          last_message_preview = excluded.last_message_preview,
          updated_at = excluded.updated_at`,
     )
@@ -316,6 +360,7 @@ function upsertConversation(conversation: Conversation): void {
       assignedTo: conversation.assignedTo ?? null,
       autoAssigned: conversation.autoAssigned ? 1 : 0,
       unreadCount: conversation.unreadCount,
+      awaitingReply: conversation.awaitingReply ? 1 : 0,
       lastMessagePreview: conversation.lastMessagePreview,
       updatedAt: conversation.updatedAt,
     });
@@ -494,6 +539,7 @@ function createConversation(
     contactId,
     channel,
     externalThreadId,
+    awaitingReply: false,
     unreadCount: 0,
     lastMessagePreview: preview,
     updatedAt: new Date().toISOString(),
@@ -575,15 +621,16 @@ export function listOperators(): Operator[] {
 
 export function listConversations(channel?: Channel | "all"): Conversation[] {
   seedDemoDataIfEmpty();
+  const orderBy = "ORDER BY awaiting_reply DESC, updated_at DESC";
   const rows =
     channel && channel !== "all"
       ? (getDb()
           .prepare(
-            "SELECT * FROM conversations WHERE channel = ? ORDER BY updated_at DESC",
+            `SELECT * FROM conversations WHERE channel = ? ${orderBy}`,
           )
           .all(channel) as ConversationRow[])
       : (getDb()
-          .prepare("SELECT * FROM conversations ORDER BY updated_at DESC")
+          .prepare(`SELECT * FROM conversations ${orderBy}`)
           .all() as ConversationRow[]);
   return rows.map(rowToConversation);
 }
@@ -619,10 +666,27 @@ export function getConversationDetail(id: string): ConversationDetail | null {
   };
 }
 
-export function markConversationRead(id: string): void {
+export function dismissConversationReply(id: string): Conversation | null {
+  const row = getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(id) as ConversationRow | undefined;
+  if (!row) return null;
+
+  const sortAt = bottomConversationSortTimestamp();
   getDb()
-    .prepare("UPDATE conversations SET unread_count = 0 WHERE id = ?")
-    .run(id);
+    .prepare(
+      `UPDATE conversations
+       SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+       WHERE id = ?`,
+    )
+    .run(sortAt, id);
+
+  return rowToConversation({
+    ...row,
+    awaiting_reply: 0,
+    unread_count: 0,
+    updated_at: sortAt,
+  });
 }
 
 export function processIncomingMessage(
@@ -825,8 +889,12 @@ export function processIncomingMessage(
     getDb()
       .prepare(
         isOutbound
-          ? `UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?`
-          : `UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?`,
+          ? `UPDATE conversations
+             SET last_message_preview = ?, updated_at = ?, awaiting_reply = 0, unread_count = 0
+             WHERE id = ?`
+          : `UPDATE conversations
+             SET last_message_preview = ?, updated_at = ?, awaiting_reply = 1, unread_count = unread_count + 1
+             WHERE id = ?`,
       )
       .run(preview, message.createdAt, conversation!.id);
   });
@@ -846,7 +914,8 @@ export function mergeDuplicateMaxConversations(): number {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT c.id, c.contact_id, c.external_thread_id, c.unread_count, c.last_message_preview, c.updated_at,
+      `SELECT c.id, c.contact_id, c.external_thread_id, c.unread_count, c.awaiting_reply,
+              c.last_message_preview, c.updated_at,
               ct.name, ct.channel_user_ids
        FROM conversations c
        JOIN contacts ct ON ct.id = c.contact_id
@@ -858,6 +927,7 @@ export function mergeDuplicateMaxConversations(): number {
     contact_id: string;
     external_thread_id: string | null;
     unread_count: number;
+    awaiting_reply: number;
     last_message_preview: string;
     updated_at: string;
     name: string;
@@ -883,6 +953,7 @@ export function mergeDuplicateMaxConversations(): number {
       );
       const keep = group[0];
       let unread = keep.unread_count;
+      let awaitingReply = keep.awaiting_reply;
       let preview = keep.last_message_preview;
       let updatedAt = keep.updated_at;
 
@@ -891,6 +962,8 @@ export function mergeDuplicateMaxConversations(): number {
           "UPDATE messages SET conversation_id = ? WHERE conversation_id = ?",
         ).run(keep.id, dup.id);
         unread += dup.unread_count;
+        awaitingReply =
+          awaitingReply || dup.awaiting_reply ? 1 : 0;
         if (dup.updated_at > updatedAt) {
           updatedAt = dup.updated_at;
           preview = dup.last_message_preview;
@@ -911,8 +984,8 @@ export function mergeDuplicateMaxConversations(): number {
       }
 
       db.prepare(
-        "UPDATE conversations SET unread_count = ?, last_message_preview = ?, updated_at = ? WHERE id = ?",
-      ).run(unread, preview, updatedAt, keep.id);
+        "UPDATE conversations SET unread_count = ?, awaiting_reply = ?, last_message_preview = ?, updated_at = ? WHERE id = ?",
+      ).run(unread, awaitingReply, preview, updatedAt, keep.id);
     }
   });
   tx();
@@ -1015,6 +1088,8 @@ export function importHistoricalMessages(
   });
   tx();
 
+  syncAwaitingReplyFromLastMessage(conversationId);
+
   return { imported, skipped };
 }
 
@@ -1111,6 +1186,10 @@ export function importMessageWithAttachments(
   return { imported: true, skipped: false, attachmentsAdded };
 }
 
+export function refreshConversationReplyState(conversationId: string): void {
+  syncAwaitingReplyFromLastMessage(conversationId);
+}
+
 export async function sendMessage(
   conversationId: string,
   content: string,
@@ -1153,7 +1232,7 @@ export async function sendMessage(
   const preview = messagePreviewText(trimmed, message.attachments);
   getDb()
     .prepare(
-      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = 0 WHERE id = ?",
+      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, awaiting_reply = 0, unread_count = 0 WHERE id = ?",
     )
     .run(preview, message.createdAt, conversationId);
 
@@ -1416,7 +1495,7 @@ export function simulateIncomingMessage(
   insertMessage(message);
   getDb()
     .prepare(
-      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?",
+      "UPDATE conversations SET last_message_preview = ?, updated_at = ?, awaiting_reply = 1, unread_count = unread_count + 1 WHERE id = ?",
     )
     .run(content.trim(), message.createdAt, conversationId);
 

@@ -15,6 +15,7 @@ import {
   importMessageWithAttachments,
   listConversations,
   listMaxKnownChatIds,
+  refreshConversationReplyState,
 } from "@/lib/store";
 
 export interface MaxHistoryMessage {
@@ -151,6 +152,8 @@ async function importMaxHistoryWithMedia(
     else if (result.skipped) skipped += 1;
     attachmentsAdded += result.attachmentsAdded;
   }
+
+  refreshConversationReplyState(conversationId);
 
   return { imported, skipped, attachmentsAdded };
 }

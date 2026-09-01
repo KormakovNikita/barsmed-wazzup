@@ -107,6 +107,9 @@ export function ConversationList({
                     "flex w-full gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
                     selectedId === conv.id &&
                       "border-l-2 border-l-primary bg-accent",
+                    conv.awaitingReply &&
+                      selectedId !== conv.id &&
+                      "bg-primary/5",
                   )}
                 >
                   <div className="relative shrink-0">
@@ -124,7 +127,12 @@ export function ConversationList({
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium text-sm">
+                      <span
+                        className={cn(
+                          "truncate text-sm",
+                          conv.awaitingReply && "font-semibold",
+                        )}
+                      >
                         {conv.contact?.name ?? "Неизвестный контакт"}
                       </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
@@ -136,7 +144,10 @@ export function ConversationList({
                         {conv.lastMessagePreview}
                       </p>
                       {conv.unreadCount > 0 && (
-                        <Badge className="h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px]">
+                        <Badge
+                          variant={conv.awaitingReply ? "default" : "secondary"}
+                          className="h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px]"
+                        >
                           {conv.unreadCount}
                         </Badge>
                       )}

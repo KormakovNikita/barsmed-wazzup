@@ -41,6 +41,7 @@ interface ChatPanelProps {
   ) => Promise<void>;
   onDeleteMessage: (messageId: string, revoke: boolean) => Promise<void>;
   onSimulateIncoming: () => Promise<void>;
+  onDismissReply?: () => Promise<void>;
   sendError?: string | null;
 }
 
@@ -152,10 +153,12 @@ export function ChatPanel({
   onSendMessage,
   onDeleteMessage,
   onSimulateIncoming,
+  onDismissReply,
   sendError,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -244,22 +247,45 @@ export function ChatPanel({
 
   const canUseTelegramActions = conversation.channel === "telegram";
 
+  async function handleDismissReply() {
+    if (!onDismissReply || dismissing) return;
+    setDismissing(true);
+    try {
+      await onDismissReply();
+    } finally {
+      setDismissing(false);
+    }
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="font-semibold">{conversation.contact.name}</h2>
           <ChannelLabel channel={conversation.channel} />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onSimulateIncoming}
-          className="gap-1.5 text-xs"
-        >
-          <Zap className="h-3.5 w-3.5" />
-          Тест входящего
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {conversation.awaitingReply && onDismissReply && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDismissReply}
+              disabled={dismissing}
+              className="text-xs"
+            >
+              {dismissing ? "…" : "Можно не отвечать"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSimulateIncoming}
+            className="gap-1.5 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Тест входящего
+          </Button>
+        </div>
       </header>
 
       <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden">
