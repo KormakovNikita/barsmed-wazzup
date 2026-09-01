@@ -3,10 +3,6 @@ import {
   downloadMaxAttachments,
   maxAttachmentPreview,
 } from "@/lib/integrations/max-media";
-import {
-  sendMaxVoiceUnsupportedNotice,
-  updateHasMaxVoice,
-} from "@/lib/integrations/max-voice-notice";
 import { processIncomingMessage } from "@/lib/store";
 
 export async function processMaxIncomingUpdate(
@@ -49,17 +45,6 @@ export async function processMaxIncomingUpdate(
   });
 
   if (!result) return null;
-
-  if (
-    result.created &&
-    parsed.direction !== "out" &&
-    updateHasMaxVoice(update)
-  ) {
-    await sendMaxVoiceUnsupportedNotice({
-      conversationId: result.conversation.id,
-      channelMessageId: parsed.channelMessageId,
-    });
-  }
 
   return {
     conversationId: result.conversation.id,

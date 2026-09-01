@@ -4,7 +4,6 @@ import {
   buildMaxOutboundAttachments,
   sendMaxMessageWithRetry,
 } from "./max-upload";
-import { isMaxVoiceLikeAttachment } from "./max-voice-notice";
 
 const DEFAULT_MAX_API = "https://platform-api2.max.ru";
 
@@ -271,9 +270,8 @@ export function parseMaxUpdate(update: MaxUpdate) {
   }
 
   const body = update.message.body;
-  const rawAttachments = body.attachments ?? [];
   const mediaAttachments =
-    rawAttachments.filter((attachment) => {
+    body.attachments?.filter((attachment) => {
       if (["image", "video", "audio", "voice", "file"].includes(attachment.type)) {
         return true;
       }
@@ -289,15 +287,11 @@ export function parseMaxUpdate(update: MaxUpdate) {
       }
       return false;
     }) ?? [];
-  const voiceLikeAttachments = rawAttachments.filter(isMaxVoiceLikeAttachment);
   const text = body.text?.trim() ?? "";
 
-  if (!text && mediaAttachments.length === 0 && voiceLikeAttachments.length === 0) {
+  if (!text && mediaAttachments.length === 0) {
     return null;
   }
-
-  const previewAttachments =
-    mediaAttachments.length > 0 ? mediaAttachments : voiceLikeAttachments;
 
   const sender = update.message.sender;
   if (!sender) return null;
@@ -322,7 +316,7 @@ export function parseMaxUpdate(update: MaxUpdate) {
       maxUserId: customerUserId ? String(customerUserId) : undefined,
       externalMessageId: `max-${body.mid ?? update.timestamp}`,
       channelMessageId: body.mid,
-      content: text || maxAttachmentPreview(previewAttachments),
+      content: text || maxAttachmentPreview(mediaAttachments),
       senderName: sender.first_name ?? "БАРСМЕД",
       senderUsername: sender.username,
       direction: "out" as const,
@@ -344,7 +338,7 @@ export function parseMaxUpdate(update: MaxUpdate) {
     maxUserId: userId,
     externalMessageId: `max-${body.mid ?? update.timestamp}`,
     channelMessageId: body.mid,
-    content: text || maxAttachmentPreview(previewAttachments),
+    content: text || maxAttachmentPreview(mediaAttachments),
     senderName: name || sender.username || "MAX user",
     senderUsername: sender.username,
     direction: "in" as const,
