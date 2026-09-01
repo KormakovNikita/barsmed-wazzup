@@ -144,4 +144,8 @@ export interface OutboundMessagePayload {
   content: string;
   attachments?: OutboundAttachmentPayload[];
   replyToChannelMessageId?: string;
+  /** MAX: dialog chat_id (preferred for delivery) */
+  maxChatId?: string;
+  /** MAX: client user_id (fallback delivery) */
+  maxUserId?: string;
 }

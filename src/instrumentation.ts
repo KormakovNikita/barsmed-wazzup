@@ -72,6 +72,13 @@ export async function register() {
       } else {
         startMaxPollingListener();
       }
+
+      const { startMaxProxyListener } = await import(
+        "@/lib/integrations/max-proxy"
+      );
+      startMaxProxyListener().catch((error) => {
+        console.error("[instrumentation] MAX proxy listener failed:", error);
+      });
     }
   }
 }

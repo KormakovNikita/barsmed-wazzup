@@ -641,6 +641,57 @@ export function listMaxKnownChatIds(): string[] {
   return rows.map((row) => row.chat_id);
 }
 
+export function resolveMaxOutboundTargets(
+  externalThreadId: string,
+  contactId?: string,
+): { chatId?: string; userId?: string } {
+  const row = getDb()
+    .prepare(
+      `SELECT chat_id, user_id FROM max_known_chats
+       WHERE chat_id = ? OR user_id = ?
+       LIMIT 1`,
+    )
+    .get(externalThreadId, externalThreadId) as
+    | { chat_id: string; user_id: string | null }
+    | undefined;
+
+  if (row) {
+    return {
+      chatId: row.chat_id,
+      userId: row.user_id ?? undefined,
+    };
+  }
+
+  if (contactId) {
+    const contact = getContactForConversation(contactId);
+    const channelUserId = contact?.channelUserIds?.max;
+    if (channelUserId) {
+      const byUser = getDb()
+        .prepare(
+          `SELECT chat_id, user_id FROM max_known_chats
+           WHERE chat_id = ? OR user_id = ?
+           LIMIT 1`,
+        )
+        .get(channelUserId, channelUserId) as
+        | { chat_id: string; user_id: string | null }
+        | undefined;
+      if (byUser) {
+        return {
+          chatId: byUser.chat_id,
+          userId: byUser.user_id ?? channelUserId,
+        };
+      }
+      return { userId: channelUserId };
+    }
+  }
+
+  if (/^\d+$/.test(externalThreadId) && externalThreadId.length > 8) {
+    return { chatId: externalThreadId };
+  }
+
+  return { userId: externalThreadId };
+}
+
 export function seedDemoDataIfEmpty(): void {
   const db = getDb();
   const opCount = (
@@ -1392,9 +1443,22 @@ export async function sendMessage(
     .run(preview, message.createdAt, conversationId);
 
   if (conversation.externalThreadId) {
+    const maxTargets =
+      conversation.channel === "max"
+        ? resolveMaxOutboundTargets(
+            conversation.externalThreadId,
+            conversation.contactId,
+          )
+        : {};
+
     const result = await dispatchOutboundMessage({
       channel: conversation.channel,
-      externalThreadId: conversation.externalThreadId,
+      externalThreadId:
+        maxTargets.chatId ??
+        maxTargets.userId ??
+        conversation.externalThreadId,
+      maxChatId: maxTargets.chatId,
+      maxUserId: maxTargets.userId,
       content: trimmed,
       attachments,
       replyToChannelMessageId,

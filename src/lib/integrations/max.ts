@@ -27,8 +27,46 @@ function maxHeaders(): HeadersInit {
   };
 }
 
-export async function sendMaxMessage(
+interface MaxSendTarget {
+  param: "chat_id" | "user_id";
+  value: string;
+}
+
+function buildMaxSendTargets(payload: OutboundMessagePayload): MaxSendTarget[] {
+  const seen = new Set<string>();
+  const targets: MaxSendTarget[] = [];
+
+  const add = (param: "chat_id" | "user_id", value?: string) => {
+    if (!value?.trim()) return;
+    const key = `${param}:${value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ param, value: value.trim() });
+  };
+
+  add("chat_id", payload.maxChatId);
+  add("user_id", payload.maxUserId);
+
+  if (/^\d+$/.test(payload.externalThreadId)) {
+    if (payload.externalThreadId.length > 8) {
+      add("chat_id", payload.externalThreadId);
+    } else {
+      add("user_id", payload.externalThreadId);
+    }
+  } else {
+    add("user_id", payload.externalThreadId);
+  }
+
+  return targets;
+}
+
+function isChatNotFoundError(errorText: string): boolean {
+  return errorText.includes("chat.not.found");
+}
+
+async function sendMaxMessageOnce(
   payload: OutboundMessagePayload,
+  target: MaxSendTarget,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   const token = getMaxBotToken();
   if (!token) {
@@ -36,15 +74,7 @@ export async function sendMaxMessage(
   }
 
   const params = new URLSearchParams();
-  if (/^\d+$/.test(payload.externalThreadId)) {
-    if (payload.externalThreadId.length > 8) {
-      params.set("chat_id", payload.externalThreadId);
-    } else {
-      params.set("user_id", payload.externalThreadId);
-    }
-  } else {
-    params.set("user_id", payload.externalThreadId);
-  }
+  params.set(target.param, target.value);
 
   const body: Record<string, unknown> = {};
   if (payload.content.trim()) {
@@ -81,7 +111,6 @@ export async function sendMaxMessage(
 
   if (!response.ok) {
     const text = await response.text();
-    // Some API clients use message_id instead of mid
     if (payload.replyToChannelMessageId && text.includes("link")) {
       const retryBody = {
         ...body,
@@ -116,6 +145,27 @@ export async function sendMaxMessage(
     ok: true,
     externalId: data.message?.body?.mid,
   };
+}
+
+export async function sendMaxMessage(
+  payload: OutboundMessagePayload,
+): Promise<{ ok: boolean; externalId?: string; error?: string }> {
+  const targets = buildMaxSendTargets(payload);
+  if (!targets.length) {
+    return { ok: false, error: "Не задан получатель MAX" };
+  }
+
+  let lastError = "Не удалось отправить сообщение";
+  for (const target of targets) {
+    const result = await sendMaxMessageOnce(payload, target);
+    if (result.ok) return result;
+    lastError = result.error ?? lastError;
+    if (!isChatNotFoundError(lastError)) {
+      return result;
+    }
+  }
+
+  return { ok: false, error: lastError };
 }
 
 export async function registerMaxWebhook(
@@ -255,8 +305,10 @@ export function parseMaxUpdate(update: MaxUpdate) {
       .join(" ")
       .trim();
     const userId = String(update.user.user_id);
+    const chatId = update.chat_id ? String(update.chat_id) : undefined;
     return {
-      externalThreadId: userId,
+      externalThreadId: chatId ?? userId,
+      maxChatId: chatId,
       maxUserId: userId,
       externalMessageId: `max-start-${update.user.user_id}-${update.timestamp}`,
       content: "/start",

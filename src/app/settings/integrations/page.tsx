@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MaxConnectPanel } from "@/components/settings/max-connect-panel";
+import { MaxProxyPanel } from "@/components/settings/max-proxy-panel";
 import { TelegramConnectForm } from "@/components/settings/telegram-connect-form";
 import { TelegramConnectPanel } from "@/components/settings/telegram-connect-panel";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,10 @@ export default function IntegrationsSettingsPage() {
       </details>
 
       <MaxConnectPanel />
+
+      <section className="space-y-3">
+        <MaxProxyPanel />
+      </section>
     </div>
   );
 }
