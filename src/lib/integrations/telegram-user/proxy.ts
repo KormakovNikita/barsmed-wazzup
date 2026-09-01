@@ -55,8 +55,9 @@ export function getTelegramProxy(): ProxyInterface | undefined {
 export function getTelegramClientOptions() {
   const proxy = getTelegramProxy();
   return {
-    connectionRetries: 5,
-    ...(proxy ? { proxy } : {}),
+    connectionRetries: 8,
+    timeout: 60,
+    ...(proxy ? { proxy: { ...proxy, timeout: 60 } } : {}),
   };
 }
 
