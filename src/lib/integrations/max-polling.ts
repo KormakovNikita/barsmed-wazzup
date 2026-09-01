@@ -1,6 +1,5 @@
-import { parseMaxWebhookBody } from "@/lib/integrations";
 import { isMaxConfigured, pollMaxUpdates } from "@/lib/integrations/max";
-import { processIncomingMessage } from "@/lib/store";
+import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
 
 let marker: number | undefined;
 let listenerStarted = false;
@@ -15,15 +14,8 @@ export async function drainMaxUpdates(): Promise<
 
   const events: { conversationId: string; created: boolean }[] = [];
   for (const update of updates) {
-    const payload = parseMaxWebhookBody(update);
-    if (!payload) continue;
-    const result = processIncomingMessage(payload);
-    if (result) {
-      events.push({
-        conversationId: result.conversation.id,
-        created: result.created,
-      });
-    }
+    const event = await processMaxIncomingUpdate(update);
+    if (event) events.push(event);
   }
 
   return events;

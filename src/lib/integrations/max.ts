@@ -1,4 +1,5 @@
 import type { OutboundMessagePayload } from "@/lib/types";
+import { maxAttachmentPreview } from "./max-media";
 
 const DEFAULT_MAX_API = "https://platform-api2.max.ru";
 
@@ -172,6 +173,7 @@ export interface MaxUpdate {
     body?: {
       mid?: string;
       text?: string;
+      attachments?: import("./max-media").MaxMessageAttachment[];
     };
   };
 }
@@ -193,7 +195,18 @@ export function parseMaxUpdate(update: MaxUpdate) {
     };
   }
 
-  if (update.update_type !== "message_created" || !update.message?.body?.text) {
+  if (update.update_type !== "message_created" || !update.message?.body) {
+    return null;
+  }
+
+  const body = update.message.body;
+  const mediaAttachments =
+    body.attachments?.filter((attachment) =>
+      ["image", "video", "audio", "file"].includes(attachment.type),
+    ) ?? [];
+  const text = body.text?.trim() ?? "";
+
+  if (!text && mediaAttachments.length === 0) {
     return null;
   }
 
@@ -216,8 +229,8 @@ export function parseMaxUpdate(update: MaxUpdate) {
       externalThreadId: threadId,
       maxChatId: chatId ? String(chatId) : undefined,
       maxUserId: customerUserId ? String(customerUserId) : undefined,
-      externalMessageId: `max-${update.message.body.mid ?? update.timestamp}`,
-      content: update.message.body.text,
+      externalMessageId: `max-${body.mid ?? update.timestamp}`,
+      content: text || maxAttachmentPreview(mediaAttachments),
       senderName: sender.first_name ?? "БАРСМЕД",
       senderUsername: sender.username,
       direction: "out" as const,
@@ -236,8 +249,8 @@ export function parseMaxUpdate(update: MaxUpdate) {
     externalThreadId: threadId,
     maxChatId: chatId ? String(chatId) : undefined,
     maxUserId: userId,
-    externalMessageId: `max-${update.message.body.mid ?? update.timestamp}`,
-    content: update.message.body.text,
+    externalMessageId: `max-${body.mid ?? update.timestamp}`,
+    content: text || maxAttachmentPreview(mediaAttachments),
     senderName: name || sender.username || "MAX user",
     senderUsername: sender.username,
     direction: "in" as const,

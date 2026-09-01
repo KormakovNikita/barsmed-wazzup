@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { AppSidebar } from "@/components/inbox/app-sidebar";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -58,6 +58,11 @@ export function InboxApp() {
     assignmentStrategy: string;
   } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const fetchStats = useCallback(async () => {
     const [statsRes, integrationsRes] = await Promise.all([
@@ -99,12 +104,12 @@ export function InboxApp() {
       }
       try {
         const res = await fetch(`/api/conversations/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setConversationDetail(data.conversation);
-        }
+        if (!res.ok) return;
+        const data = await res.json();
+        if (selectedIdRef.current !== id) return;
+        setConversationDetail(data.conversation);
       } finally {
-        if (!silent) {
+        if (!silent && selectedIdRef.current === id) {
           setLoadingDetail(false);
         }
       }
@@ -157,7 +162,9 @@ export function InboxApp() {
   ]);
 
   async function handleSelect(id: string) {
+    selectedIdRef.current = id;
     setSelectedId(id);
+    setConversationDetail(null);
     setMobileOpen(false);
     await fetchConversations();
   }
@@ -305,15 +312,22 @@ export function InboxApp() {
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <ChatPanel
-            conversation={conversationDetail}
-            loading={loadingDetail && !conversationDetail}
+            conversation={
+              conversationDetail?.id === selectedId ? conversationDetail : null
+            }
+            loading={
+              Boolean(selectedId) &&
+              (loadingDetail || conversationDetail?.id !== selectedId)
+            }
             onSendMessage={handleSendMessage}
             onDeleteMessage={handleDeleteMessage}
             onSimulateIncoming={handleSimulateIncoming}
             sendError={sendError}
           />
           <ContactPanel
-            conversation={conversationDetail}
+            conversation={
+              conversationDetail?.id === selectedId ? conversationDetail : null
+            }
             operators={operators}
             onAssign={handleAssign}
           />
