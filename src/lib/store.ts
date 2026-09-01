@@ -1018,6 +1018,99 @@ export function importHistoricalMessages(
   return { imported, skipped };
 }
 
+export function importMessageWithAttachments(
+  conversationId: string,
+  item: {
+    externalId: string;
+    content: string;
+    direction: "in" | "out";
+    createdAt: string;
+    attachments?: IncomingAttachmentPayload[];
+  },
+): { imported: boolean; skipped: boolean; attachmentsAdded: number } {
+  const existing = getDb()
+    .prepare(
+      "SELECT id, content FROM messages WHERE conversation_id = ? AND external_id = ?",
+    )
+    .get(conversationId, item.externalId) as
+    | { id: string; content: string }
+    | undefined;
+
+  if (existing) {
+    const attRow = getDb()
+      .prepare(
+        "SELECT COUNT(*) as count FROM message_attachments WHERE message_id = ?",
+      )
+      .get(existing.id) as { count: number };
+
+    if (attRow.count === 0 && item.attachments?.length) {
+      insertAttachmentsForMessage(
+        existing.id,
+        conversationId,
+        item.attachments,
+      );
+      if (
+        (existing.content === "[сообщение без текста]" ||
+          !existing.content.trim()) &&
+        item.content.trim()
+      ) {
+        getDb()
+          .prepare("UPDATE messages SET content = ? WHERE id = ?")
+          .run(item.content, existing.id);
+      }
+      return {
+        imported: false,
+        skipped: true,
+        attachmentsAdded: item.attachments.length,
+      };
+    }
+
+    return { imported: false, skipped: true, attachmentsAdded: 0 };
+  }
+
+  const message: Message = {
+    id: `m-hist-${item.externalId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40)}`,
+    conversationId,
+    content: item.content,
+    direction: item.direction,
+    status: item.direction === "out" ? "delivered" : "read",
+    externalId: item.externalId,
+    createdAt: item.createdAt,
+  };
+
+  let attachmentsAdded = 0;
+
+  const tx = getDb().transaction(() => {
+    insertMessage(message);
+    if (item.attachments?.length) {
+      insertAttachmentsForMessage(
+        message.id,
+        conversationId,
+        item.attachments,
+      );
+      attachmentsAdded = item.attachments.length;
+    }
+
+    const latest = getDb()
+      .prepare(
+        "SELECT created_at FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(conversationId) as { created_at: string } | undefined;
+
+    if (latest?.created_at === item.createdAt) {
+      const preview = messagePreviewText(item.content, message.attachments);
+      getDb()
+        .prepare(
+          "UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(preview, item.createdAt, conversationId);
+    }
+  });
+  tx();
+
+  return { imported: true, skipped: false, attachmentsAdded };
+}
+
 export async function sendMessage(
   conversationId: string,
   content: string,

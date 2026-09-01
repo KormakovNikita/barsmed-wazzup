@@ -4,8 +4,15 @@ import {
   getMaxBotToken,
 } from "@/lib/integrations/max";
 import {
+  downloadMaxAttachments,
+  isMaxMediaAttachment,
+  maxAttachmentPreview,
+  type MaxMessageAttachment,
+} from "@/lib/integrations/max-media";
+import {
   findOrCreateMaxConversation,
   importHistoricalMessages,
+  importMessageWithAttachments,
   listConversations,
   listMaxKnownChatIds,
 } from "@/lib/store";
@@ -17,11 +24,16 @@ export interface MaxHistoryMessage {
   createdAt: string;
   senderUserId?: number;
   senderName?: string;
+  attachments?: MaxMessageAttachment[];
 }
 
 interface MaxApiMessage {
   timestamp?: number;
-  body?: { mid?: string; text?: string };
+  body?: {
+    mid?: string;
+    text?: string;
+    attachments?: MaxMessageAttachment[];
+  };
   sender?: {
     user_id?: number;
     first_name?: string;
@@ -86,14 +98,25 @@ export function mapMaxApiMessagesToHistory(
         .filter(Boolean)
         .join(" ")
         .trim();
+      const attachments = msg.body?.attachments ?? [];
+      const mediaAttachments = attachments.filter(isMaxMediaAttachment);
+      const text = msg.body?.text?.trim() ?? "";
+
+      let content = text;
+      if (!content && mediaAttachments.length) {
+        content = maxAttachmentPreview(attachments);
+      } else if (!content) {
+        content = "[сообщение без текста]";
+      }
 
       return {
         externalId: msg.body!.mid!,
-        content: msg.body?.text?.trim() || "[сообщение без текста]",
+        content,
         direction: isBot ? ("out" as const) : ("in" as const),
         createdAt: new Date(msg.timestamp ?? Date.now()).toISOString(),
         senderUserId: sender?.user_id,
         senderName: name || sender?.username || undefined,
+        attachments: mediaAttachments.length ? attachments : undefined,
       };
     });
 
@@ -103,12 +126,42 @@ export function mapMaxApiMessagesToHistory(
   );
 }
 
+async function importMaxHistoryWithMedia(
+  conversationId: string,
+  history: MaxHistoryMessage[],
+): Promise<{ imported: number; skipped: number; attachmentsAdded: number }> {
+  let imported = 0;
+  let skipped = 0;
+  let attachmentsAdded = 0;
+
+  for (const item of history) {
+    const downloaded = item.attachments?.length
+      ? await downloadMaxAttachments(item.attachments)
+      : undefined;
+
+    const result = importMessageWithAttachments(conversationId, {
+      externalId: item.externalId,
+      content: item.content,
+      direction: item.direction,
+      createdAt: item.createdAt,
+      attachments: downloaded?.length ? downloaded : undefined,
+    });
+
+    if (result.imported) imported += 1;
+    else if (result.skipped) skipped += 1;
+    attachmentsAdded += result.attachmentsAdded;
+  }
+
+  return { imported, skipped, attachmentsAdded };
+}
+
 export async function syncMaxChatHistory(chatId: string): Promise<{
   ok: boolean;
   chatId: string;
   conversationId?: string;
   imported: number;
   skipped: number;
+  attachmentsAdded: number;
   totalFetched: number;
   error?: string;
 }> {
@@ -119,6 +172,7 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
       chatId,
       imported: 0,
       skipped: 0,
+      attachmentsAdded: 0,
       totalFetched: 0,
       error: botInfo.error ?? "MAX не настроен",
     };
@@ -133,6 +187,7 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
       chatId,
       imported: 0,
       skipped: 0,
+      attachmentsAdded: 0,
       totalFetched: 0,
     };
   }
@@ -150,7 +205,7 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
     preview: history[history.length - 1]?.content ?? "",
   });
 
-  const result = importHistoricalMessages(conversation.id, history);
+  const result = await importMaxHistoryWithMedia(conversation.id, history);
 
   return {
     ok: true,
@@ -158,15 +213,30 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
     conversationId: conversation.id,
     imported: result.imported,
     skipped: result.skipped,
+    attachmentsAdded: result.attachmentsAdded,
     totalFetched: history.length,
   };
 }
 
-export async function syncAllMaxHistory(options?: {
+/** Re-fetch MAX history and import missing messages / attachments */
+export async function backfillMaxChatMedia(chatId: string): Promise<{
+  ok: boolean;
+  chatId: string;
+  conversationId?: string;
+  imported: number;
+  skipped: number;
+  attachmentsAdded: number;
+  totalFetched: number;
+  error?: string;
+}> {
+  return syncMaxChatHistory(chatId);
+}
+
+export async function backfillAllMaxMedia(options?: {
   chatIds?: string[];
 }): Promise<{
   ok: boolean;
-  synced: Awaited<ReturnType<typeof syncMaxChatHistory>>[];
+  synced: Awaited<ReturnType<typeof backfillMaxChatMedia>>[];
   error?: string;
 }> {
   const botInfo = await getMaxBotInfo();
@@ -190,10 +260,28 @@ export async function syncAllMaxHistory(options?: {
     if (chatId.trim()) knownChatIds.add(chatId.trim());
   }
 
-  const synced: Awaited<ReturnType<typeof syncMaxChatHistory>>[] = [];
+  const synced: Awaited<ReturnType<typeof backfillMaxChatMedia>>[] = [];
   for (const chatId of knownChatIds) {
-    synced.push(await syncMaxChatHistory(chatId));
+    synced.push(await backfillMaxChatMedia(chatId));
   }
 
   return { ok: true, synced };
+}
+
+export async function syncAllMaxHistory(options?: {
+  chatIds?: string[];
+}): Promise<{
+  ok: boolean;
+  synced: Awaited<ReturnType<typeof syncMaxChatHistory>>[];
+  error?: string;
+}> {
+  return backfillAllMaxMedia(options);
+}
+
+/** Legacy text-only import for Wazzup migration paths */
+export function importMaxTextHistory(
+  conversationId: string,
+  history: Omit<MaxHistoryMessage, "attachments">[],
+): { imported: number; skipped: number } {
+  return importHistoricalMessages(conversationId, history);
 }
