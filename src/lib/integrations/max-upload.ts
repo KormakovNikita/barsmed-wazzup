@@ -1,5 +1,5 @@
 import { getMaxApiBase, getMaxBotToken } from "@/lib/integrations/max";
-import type { MessageMediaType, OutboundAttachmentPayload } from "@/lib/types";
+import type { OutboundAttachmentPayload } from "@/lib/types";
 
 export type MaxUploadType = "image" | "video" | "audio" | "file";
 
