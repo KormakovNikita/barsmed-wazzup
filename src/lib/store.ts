@@ -1089,10 +1089,12 @@ export async function deleteMessage(
   }
 
   if (message.externalId && message.externalThreadId) {
+    const channelMessageId =
+      message.externalId.match(/^tg-user-(\d+)-/)?.[1] ?? message.externalId;
     const remote = await deleteChannelMessage({
       channel: message.channel,
       externalThreadId: message.externalThreadId,
-      channelMessageId: message.externalId,
+      channelMessageId,
       revoke: options?.revoke ?? false,
     });
     if (!remote.ok && options?.revoke) {
