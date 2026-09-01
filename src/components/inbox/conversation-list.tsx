@@ -6,7 +6,7 @@ import { Inbox, MessageCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ChannelBadge } from "@/components/inbox/channel-badge";
+import { ChannelAvatarBadge } from "@/components/inbox/channel-badge";
 import { ContactAvatar } from "@/components/inbox/contact-avatar";
 import type { Conversation, Contact, Channel } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -197,9 +197,10 @@ export function ConversationList({
                   >
                     <div className="relative shrink-0">
                       <ContactAvatar name={contactName} size="sm" />
-                      <div className="absolute -bottom-0.5 -right-0.5 rounded-md ring-2 ring-card">
-                        <ChannelBadge channel={conv.channel as Channel} />
-                      </div>
+                      <ChannelAvatarBadge
+                        channel={conv.channel as Channel}
+                        className="absolute bottom-0 right-0 translate-x-1/4 translate-y-1/4"
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
