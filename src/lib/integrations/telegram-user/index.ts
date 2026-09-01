@@ -328,10 +328,10 @@ export async function startTelegramUserListener() {
       try {
         await processTelegramUserMessage(event.message, c);
       } catch (error) {
-        console.error("[telegram-user] incoming handler error:", error);
+        console.error("[telegram-user] message handler error:", error);
       }
     },
-    new NewMessage({ incoming: true }),
+    new NewMessage({}),
   );
 }
 

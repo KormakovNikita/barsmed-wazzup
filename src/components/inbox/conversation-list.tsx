@@ -116,9 +116,9 @@ export function ConversationList({
                   type="button"
                   onClick={() => onSelect(conv.id)}
                   className={cn(
-                    "flex w-full gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
+                    "flex w-full gap-3 px-3 py-3 text-left transition-all duration-200 ease-out hover:bg-accent/50 active:scale-[0.99]",
                     selectedId === conv.id &&
-                      "border-l-2 border-l-primary bg-accent",
+                      "border-l-2 border-l-primary bg-accent/80",
                     conv.awaitingReply &&
                       selectedId !== conv.id &&
                       "bg-primary/5",

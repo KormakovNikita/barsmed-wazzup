@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 interface ChatPanelProps {
   conversation: ConversationDetail | null;
   loading: boolean;
+  syncing?: boolean;
   onSendMessage: (
     content: string,
     file?: File,
@@ -212,6 +213,7 @@ function AttachmentView({
 export function ChatPanel({
   conversation,
   loading,
+  syncing = false,
   onSendMessage,
   onDeleteMessage,
   onSimulateIncoming,
@@ -236,6 +238,12 @@ export function ChatPanel({
       '[data-slot="scroll-area-viewport"]',
     ) as HTMLElement | null;
     if (!viewport) return;
+
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const isNearBottom = distanceFromBottom < 120;
+
+    if (behavior === "smooth" && !isNearBottom) return;
 
     if (behavior === "smooth") {
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
@@ -266,10 +274,10 @@ export function ChatPanel({
 
     const count = conversation?.messages.length ?? 0;
     if (count > messageCountRef.current) {
-      scrollMessagesToBottom("smooth");
+      scrollMessagesToBottom(sending ? "auto" : "smooth");
     }
     messageCountRef.current = count;
-  }, [conversation?.id, conversation?.messages, scrollMessagesToBottom]);
+  }, [conversation?.id, conversation?.messages, scrollMessagesToBottom, sending]);
 
   async function handleSend() {
     if ((!draft.trim() && !selectedFile) || sending) return;
@@ -343,8 +351,29 @@ export function ChatPanel({
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-muted/20">
-        <p className="text-sm text-muted-foreground">Загрузка диалога...</p>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <div className="shrink-0 border-b px-4 py-3">
+          <div className="h-5 w-40 animate-pulse rounded-md bg-muted" />
+          <div className="mt-2 h-3 w-24 animate-pulse rounded-md bg-muted/70" />
+        </div>
+        <div className="flex-1 space-y-3 overflow-hidden p-4">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                "flex",
+                index % 2 === 0 ? "justify-start" : "justify-end",
+              )}
+            >
+              <div
+                className={cn(
+                  "h-12 animate-pulse rounded-2xl bg-muted/80",
+                  index % 2 === 0 ? "w-[58%]" : "w-[42%]",
+                )}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -392,8 +421,13 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      {syncing && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/10">
+          <div className="h-full w-1/3 animate-[shimmer_1.2s_ease-in-out_infinite] bg-primary/60" />
+        </div>
+      )}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3 backdrop-blur-sm">
         <div>
           <h2 className="font-semibold">{conversation.contact.name}</h2>
           <ChannelLabel channel={conversation.channel} />
@@ -422,7 +456,7 @@ export function ChatPanel({
         </div>
       </header>
 
-      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden">
+      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden scroll-smooth">
         <ScrollArea className="h-full">
           <div className="space-y-3 px-4 py-4">
             {conversation.messages.map((msg, index) => {
@@ -445,7 +479,10 @@ export function ChatPanel({
                     </div>
                   )}
                 <div
-                  className={cn("group flex items-end gap-1", isOut ? "justify-end" : "justify-start")}
+                  className={cn(
+                    "group flex items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200",
+                    isOut ? "justify-end" : "justify-start",
+                  )}
                 >
                   {canReplyToMessages && (
                     <Button
@@ -464,11 +501,11 @@ export function ChatPanel({
                   )}
                   <div
                     className={cn(
-                      "order-2 max-w-[75%] rounded-2xl px-3.5 py-2 text-sm transition-colors",
+                      "order-2 max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-[background-color,transform] duration-200",
                       isOut
                         ? "rounded-br-md bg-primary text-primary-foreground"
                         : "rounded-bl-md bg-muted",
-                      canReplyToMessages && "cursor-pointer hover:brightness-95",
+                      canReplyToMessages && "cursor-pointer hover:brightness-[0.98]",
                     )}
                     onDoubleClick={() => {
                       if (canReplyToMessages) selectMessageForReply(msg);
@@ -545,7 +582,7 @@ export function ChatPanel({
         </ScrollArea>
       </div>
 
-      <footer className="shrink-0 border-t p-3">
+      <footer className="shrink-0 border-t border-border/60 bg-background/95 p-3 backdrop-blur-sm">
         {sendError && (
           <p className="mb-2 text-xs text-destructive">{sendError}</p>
         )}

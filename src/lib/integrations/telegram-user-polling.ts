@@ -11,7 +11,9 @@ let syncing = false;
 let initialSyncDone = false;
 let lastLightSyncAt = 0;
 
-const LIGHT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const LIGHT_SYNC_INTERVAL_MS = Number(
+  process.env.TELEGRAM_USER_LIGHT_SYNC_MS ?? 15000,
+);
 
 export async function drainTelegramUserUpdates(): Promise<
   { conversationId: string; created: boolean }[]
@@ -43,8 +45,8 @@ export async function drainTelegramUserUpdates(): Promise<
       return [];
     }
 
-    const limit = initialSyncDone ? 5 : 20;
-    const perDialogLimit = initialSyncDone ? 1 : 8;
+    const limit = initialSyncDone ? 12 : 20;
+    const perDialogLimit = initialSyncDone ? 3 : 8;
 
     const dialogs = await client.getDialogs({ limit });
 
@@ -57,7 +59,7 @@ export async function drainTelegramUserUpdates(): Promise<
       });
 
       for (const message of messages) {
-        const event = await processTelegramUserMessage(message);
+        const event = await processTelegramUserMessage(message, client);
         if (event) events.push(event);
       }
     }

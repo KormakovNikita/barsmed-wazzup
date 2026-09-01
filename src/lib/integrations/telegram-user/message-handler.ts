@@ -81,17 +81,60 @@ function getReplyToChannelMessageId(
   return undefined;
 }
 
+async function resolvePeerInfo(
+  message: IncomingTelegramMessage,
+  client?: TelegramClient | null,
+): Promise<{ name: string; username?: string }> {
+  if (!client || !("peerId" in message) || !message.peerId) {
+    return { name: "Telegram" };
+  }
+
+  try {
+    const entity = await client.getEntity(message.peerId);
+    if ("firstName" in entity) {
+      const name = [entity.firstName, entity.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      return {
+        name: name || entity.username || "Telegram",
+        username: entity.username ?? undefined,
+      };
+    }
+    if ("title" in entity) {
+      return { name: String(entity.title) };
+    }
+  } catch {
+    // fall through
+  }
+
+  return { name: "Telegram" };
+}
+
 export async function processTelegramUserMessage(
   message: IncomingTelegramMessage,
   client?: TelegramClient | null,
 ): Promise<{ conversationId: string; created: boolean } | null> {
-  if (!message || ("out" in message && message.out)) return null;
+  if (!message) return null;
+
+  const isOutbound = "out" in message && Boolean(message.out);
 
   const threadId = getThreadId(message);
   if (!threadId) return null;
 
-  const { name, username, skip } = await resolveSenderInfo(message);
-  if (skip) return null;
+  let name: string;
+  let username: string | undefined;
+
+  if (isOutbound) {
+    const peer = await resolvePeerInfo(message, client);
+    name = peer.name;
+    username = peer.username;
+  } else {
+    const sender = await resolveSenderInfo(message);
+    if (sender.skip) return null;
+    name = sender.name;
+    username = sender.username;
+  }
 
   const messageId = "id" in message ? message.id : 0;
   const messageDate = "date" in message ? message.date : 0;
@@ -134,12 +177,13 @@ export async function processTelegramUserMessage(
     senderName: name,
     senderUsername: username,
     attachments,
+    direction: isOutbound ? "out" : "in",
   });
 
   if (!result) return null;
 
   console.info(
-    `[telegram-user] processed message from ${name} (${threadId}): ${content.slice(0, 80)}`,
+    `[telegram-user] processed ${isOutbound ? "outgoing" : "incoming"} message ${name} (${threadId}): ${content.slice(0, 80)}`,
   );
 
   return {

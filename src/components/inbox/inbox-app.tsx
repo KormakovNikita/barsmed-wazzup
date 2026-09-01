@@ -14,6 +14,7 @@ import type {
   Contact,
   Conversation,
   ConversationDetail,
+  Message,
   Operator,
 } from "@/lib/types";
 
@@ -23,6 +24,47 @@ const DEMO_INCOMING_MESSAGES = [
   "Отправил документы на почту",
   "Когда будет ответ?",
 ];
+
+const POLL_VISIBLE_MS = 3000;
+const POLL_HIDDEN_MS = 12000;
+
+function mergeMessage(existing: Message[], incoming: Message): Message[] {
+  const index = existing.findIndex(
+    (item) =>
+      item.id === incoming.id ||
+      (incoming.externalId &&
+        item.externalId &&
+        item.externalId === incoming.externalId),
+  );
+  if (index >= 0) {
+    const next = [...existing];
+    next[index] = incoming;
+    return next;
+  }
+  return [...existing, incoming];
+}
+
+function mergeConversationDetail(
+  prev: ConversationDetail | null,
+  incoming: ConversationDetail,
+): ConversationDetail {
+  if (!prev || prev.id !== incoming.id) return incoming;
+
+  const prevMessages = prev.messages;
+  const nextMessages = incoming.messages;
+
+  if (
+    prevMessages.length === nextMessages.length &&
+    prevMessages.every((msg, index) => msg.id === nextMessages[index]?.id)
+  ) {
+    return {
+      ...incoming,
+      messages: prevMessages,
+    };
+  }
+
+  return incoming;
+}
 
 export function InboxApp() {
   const [activeChannel, setActiveChannel] = useState<Channel | "all">("all");
@@ -59,7 +101,9 @@ export function InboxApp() {
     assignmentStrategy: string;
   } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
+  const pollInFlightRef = useRef(false);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -73,60 +117,74 @@ export function InboxApp() {
   }, [searchQuery]);
 
   const fetchStats = useCallback(async () => {
-    const [statsRes, integrationsRes] = await Promise.all([
-      fetch("/api/stats"),
-      fetch("/api/integrations/status"),
-    ]);
-    const data = await statsRes.json();
-    const integrations = await integrationsRes.json();
-    setOperators(data.operators);
-    setStats(data.stats);
-    setIntegrationStatus(integrations);
+    try {
+      const [statsRes, integrationsRes] = await Promise.all([
+        fetch("/api/stats"),
+        fetch("/api/integrations/status"),
+      ]);
+      const data = await statsRes.json();
+      const integrations = await integrationsRes.json();
+      setOperators(data.operators);
+      setStats(data.stats);
+      setIntegrationStatus(integrations);
+    } catch {
+      // stats refresh is best-effort
+    }
   }, []);
 
-  const fetchConversations = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (activeChannel !== "all") {
-        params.set("channel", activeChannel);
+  const fetchConversations = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) setLoadingConversations(true);
+      try {
+        const params = new URLSearchParams();
+        if (activeChannel !== "all") {
+          params.set("channel", activeChannel);
+        }
+        if (debouncedSearchQuery) {
+          params.set("q", debouncedSearchQuery);
+        }
+        const query = params.toString();
+        const res = await fetch(
+          `/api/conversations${query ? `?${query}` : ""}`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        if (!res.ok) {
+          throw new Error(`Не удалось загрузить диалоги (${res.status})`);
+        }
+        const data = await res.json();
+        setConversations(data.conversations ?? []);
+        setFetchError(null);
+      } catch (error) {
+        if (!silent) {
+          setFetchError(
+            error instanceof Error ? error.message : "Ошибка загрузки диалогов",
+          );
+        }
+      } finally {
+        if (!silent) setLoadingConversations(false);
       }
-      if (debouncedSearchQuery) {
-        params.set("q", debouncedSearchQuery);
-      }
-      const query = params.toString();
-      const res = await fetch(
-        `/api/conversations${query ? `?${query}` : ""}`,
-        {
-          signal: AbortSignal.timeout(15000),
-        },
-      );
-      if (!res.ok) {
-        throw new Error(`Не удалось загрузить диалоги (${res.status})`);
-      }
-      const data = await res.json();
-      setConversations(data.conversations ?? []);
-      setFetchError(null);
-    } catch (error) {
-      setFetchError(
-        error instanceof Error ? error.message : "Ошибка загрузки диалогов",
-      );
-    } finally {
-      setLoadingConversations(false);
-    }
-  }, [activeChannel, debouncedSearchQuery]);
+    },
+    [activeChannel, debouncedSearchQuery],
+  );
 
   const fetchConversationDetail = useCallback(
     async (id: string, options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false;
-      if (!silent) {
-        setLoadingDetail(true);
-      }
+      if (!silent) setLoadingDetail(true);
       try {
-        const res = await fetch(`/api/conversations/${id}`);
+        const res = await fetch(`/api/conversations/${id}`, {
+          signal: AbortSignal.timeout(15000),
+        });
         if (!res.ok) return;
         const data = await res.json();
         if (selectedIdRef.current !== id) return;
-        setConversationDetail(data.conversation);
+        const conversation = data.conversation as ConversationDetail;
+        if (silent) {
+          setConversationDetail((prev) => mergeConversationDetail(prev, conversation));
+        } else {
+          setConversationDetail(conversation);
+        }
       } finally {
         if (!silent && selectedIdRef.current === id) {
           setLoadingDetail(false);
@@ -136,6 +194,34 @@ export function InboxApp() {
     [],
   );
 
+  const refreshInbox = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? true;
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      if (silent) setSyncing(true);
+
+      try {
+        await fetch("/api/integrations/poll", {
+          method: "POST",
+          signal: AbortSignal.timeout(12000),
+        }).catch(() => undefined);
+
+        await Promise.all([
+          fetchConversations({ silent: true }),
+          selectedIdRef.current
+            ? fetchConversationDetail(selectedIdRef.current, { silent: true })
+            : Promise.resolve(),
+          fetchStats(),
+        ]);
+      } finally {
+        pollInFlightRef.current = false;
+        if (silent) setSyncing(false);
+      }
+    },
+    [fetchConversations, fetchConversationDetail, fetchStats],
+  );
+
   useEffect(() => {
     setLoadingConversations(true);
     fetchConversations();
@@ -143,31 +229,41 @@ export function InboxApp() {
   }, [fetchConversations, fetchStats]);
 
   useEffect(() => {
-    if (selectedId) {
-      fetchConversationDetail(selectedId);
-    } else {
+    if (!selectedId) {
       setConversationDetail(null);
+      return;
     }
-  }, [selectedId, fetchConversationDetail]);
+    if (conversationDetail?.id === selectedId) return;
+    fetchConversationDetail(selectedId);
+  }, [selectedId, conversationDetail?.id, fetchConversationDetail]);
 
   useEffect(() => {
-    const interval = setInterval(async () => {
-      // Server-side listeners update the DB; UI only needs to refresh the list.
-      await fetchConversations();
-      if (selectedId) {
-        await fetchConversationDetail(selectedId, { silent: true });
-      }
-      fetchStats();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [fetchConversations, fetchConversationDetail, selectedId]);
+    let interval: ReturnType<typeof setInterval> | null = null;
 
-  async function handleSelect(id: string) {
+    const schedule = () => {
+      if (interval) clearInterval(interval);
+      const ms = document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
+      interval = setInterval(() => {
+        void refreshInbox({ silent: true });
+      }, ms);
+    };
+
+    schedule();
+    void refreshInbox({ silent: true });
+
+    const onVisibility = () => schedule();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshInbox]);
+
+  function handleSelect(id: string) {
+    if (id === selectedId) return;
     selectedIdRef.current = id;
     setSelectedId(id);
-    setConversationDetail(null);
     setMobileOpen(false);
-    await fetchConversations();
   }
 
   async function handleSendMessage(
@@ -209,8 +305,27 @@ export function InboxApp() {
     if (data.error) {
       setSendError(data.error);
     }
-    await fetchConversationDetail(selectedId);
-    await fetchConversations();
+
+    if (data.message) {
+      setConversationDetail((prev) => {
+        if (!prev || prev.id !== selectedId) return prev;
+        return {
+          ...prev,
+          messages: mergeMessage(prev.messages, data.message as Message),
+          lastMessagePreview:
+            data.message.content?.trim() || prev.lastMessagePreview,
+          updatedAt: data.message.createdAt,
+          awaitingReply: false,
+          unreadCount: 0,
+        };
+      });
+    }
+
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+      fetchStats(),
+    ]);
   }
 
   async function handleDeleteMessage(messageId: string, revoke: boolean) {
@@ -224,8 +339,10 @@ export function InboxApp() {
     if (data.error) {
       setSendError(data.error);
     }
-    await fetchConversationDetail(selectedId);
-    await fetchConversations();
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+    ]);
   }
 
   async function handleAssign(operatorId: string | null) {
@@ -235,8 +352,10 @@ export function InboxApp() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ operatorId }),
     });
-    await fetchConversationDetail(selectedId);
-    await fetchConversations();
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+    ]);
   }
 
   async function handleSimulateIncoming() {
@@ -250,8 +369,10 @@ export function InboxApp() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ conversationId: selectedId, content }),
     });
-    await fetchConversationDetail(selectedId);
-    await fetchConversations();
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+    ]);
   }
 
   async function handleDismissReply() {
@@ -259,10 +380,18 @@ export function InboxApp() {
     await fetch(`/api/conversations/${selectedId}/dismiss`, {
       method: "POST",
     });
-    await fetchConversationDetail(selectedId);
-    await fetchConversations();
-    await fetchStats();
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+      fetchStats(),
+    ]);
   }
+
+  const activeConversation =
+    conversationDetail?.id === selectedId ? conversationDetail : null;
+  const isChatInitialLoading = Boolean(
+    selectedId && !activeConversation && loadingDetail,
+  );
 
   const conversationListProps = {
     conversations,
@@ -270,12 +399,12 @@ export function InboxApp() {
     onSelect: handleSelect,
     searchQuery,
     onSearchChange: setSearchQuery,
-    loading: loadingConversations,
+    loading: loadingConversations && conversations.length === 0,
     error: fetchError,
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar
         activeChannel={activeChannel}
         onChannelChange={setActiveChannel}
@@ -284,12 +413,12 @@ export function InboxApp() {
         integrationStatus={integrationStatus}
       />
 
-      <div className="hidden h-full min-h-0 w-80 shrink-0 flex-col md:flex">
-        <div className="border-b p-3">
+      <div className="hidden h-full min-h-0 w-80 shrink-0 flex-col border-r border-border/60 md:flex">
+        <div className="border-b border-border/60 p-3">
           <NewConversationDialog
             onCreated={(id) => {
               setSelectedId(id);
-              fetchConversations();
+              fetchConversations({ silent: true });
               fetchConversationDetail(id);
             }}
           />
@@ -300,7 +429,7 @@ export function InboxApp() {
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
+        <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 md:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger
               render={
@@ -314,6 +443,9 @@ export function InboxApp() {
             </SheetContent>
           </Sheet>
           <span className="font-semibold">HubDesk</span>
+          {syncing && (
+            <span className="text-xs text-muted-foreground">синхронизация…</span>
+          )}
           {stats.totalUnread > 0 && (
             <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
               {stats.totalUnread} новых
@@ -323,13 +455,9 @@ export function InboxApp() {
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <ChatPanel
-            conversation={
-              conversationDetail?.id === selectedId ? conversationDetail : null
-            }
-            loading={
-              Boolean(selectedId) &&
-              (loadingDetail || conversationDetail?.id !== selectedId)
-            }
+            conversation={activeConversation}
+            loading={isChatInitialLoading}
+            syncing={syncing}
             onSendMessage={handleSendMessage}
             onDeleteMessage={handleDeleteMessage}
             onSimulateIncoming={handleSimulateIncoming}
@@ -338,9 +466,7 @@ export function InboxApp() {
             onReplyError={setSendError}
           />
           <ContactPanel
-            conversation={
-              conversationDetail?.id === selectedId ? conversationDetail : null
-            }
+            conversation={activeConversation}
             operators={operators}
             onAssign={handleAssign}
           />

@@ -996,7 +996,7 @@ export function processIncomingMessage(
   const isOutbound = payload.direction === "out";
 
   if (!conversation) {
-    if (isOutbound) {
+    if (isOutbound && payload.channel !== "telegram") {
       return null;
     }
 
@@ -1055,11 +1055,21 @@ export function processIncomingMessage(
   }
 
   const externalMid = payload.externalMessageId.replace(/^max-/, "");
-  const duplicateOutbound = getDb()
-    .prepare(
-      "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
-    )
-    .get(conversation!.id, externalMid) as MessageRow | undefined;
+  let duplicateOutbound: MessageRow | undefined;
+  if (payload.channelMessageId) {
+    duplicateOutbound = getDb()
+      .prepare(
+        "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
+      )
+      .get(conversation!.id, payload.channelMessageId) as MessageRow | undefined;
+  }
+  if (!duplicateOutbound) {
+    duplicateOutbound = getDb()
+      .prepare(
+        "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
+      )
+      .get(conversation!.id, externalMid) as MessageRow | undefined;
+  }
 
   if (duplicateOutbound) {
     getDb()
