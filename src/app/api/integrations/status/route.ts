@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { getIntegrationStatus } from "@/lib/integrations";
 import {
   deleteMaxWebhook,
-  getMaxMode,
   isMaxConfigured,
   listMaxSubscriptions,
   registerMaxWebhook,
-} from "@/lib/integrations/max-channel";
+} from "@/lib/integrations/max";
 import {
   deleteTelegramWebhook,
   getTelegramMode,
@@ -100,7 +99,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (getMaxMode() === "bot" && isMaxConfigured()) {
+    if (isMaxConfigured()) {
       results.max = await registerMaxWebhook(`${baseUrl}/api/webhooks/max`);
     }
 

@@ -1,10 +1,12 @@
 import type { Channel, IncomingMessagePayload, OutboundMessagePayload } from "@/lib/types";
 import {
-  getMaxStatus,
+  getMaxBotInfo,
   isMaxConfigured,
+  listMaxSubscriptions,
+  parseMaxUpdate,
   sendMaxMessage,
-} from "./max-channel";
-import { parseMaxUpdate, type MaxUpdate } from "./max";
+  type MaxUpdate,
+} from "./max";
 import {
   deleteTelegramMessage,
   getTelegramMode,
@@ -77,7 +79,9 @@ export function parseMaxWebhookBody(
 export async function getIntegrationStatus() {
   const webhookBase = process.env.WEBHOOK_BASE_URL;
   const telegram = await getTelegramStatus();
-  const max = await getMaxStatus();
+  const maxConfigured = isMaxConfigured();
+  const maxInfo = maxConfigured ? await getMaxBotInfo() : null;
+  const maxSubs = maxConfigured ? await listMaxSubscriptions() : null;
 
   return {
     telegram: {
@@ -91,13 +95,12 @@ export async function getIntegrationStatus() {
         "wazzupChannelId" in telegram ? telegram.wazzupChannelId : null,
     },
     max: {
-      configured: max.configured,
-      connected: max.connected,
-      mode: max.mode,
-      profile: max.profile,
-      error: max.error,
-      webhooks: max.webhooks,
-      transport: max.transport,
+      configured: maxConfigured,
+      connected: maxInfo?.ok ?? false,
+      mode: webhookBase ? "webhook" : "polling",
+      profile: maxInfo?.bot ?? null,
+      error: maxInfo?.ok === false ? maxInfo.error : null,
+      webhooks: maxSubs?.subscriptions ?? [],
     },
     webhookBaseUrl: webhookBase ?? null,
     assignmentStrategy:
