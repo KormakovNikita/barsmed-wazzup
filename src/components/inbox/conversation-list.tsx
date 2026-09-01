@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { formatConversationTime } from "@/lib/format-date";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,24 @@ interface ConversationListProps {
   error?: string | null;
 }
 
+function highlightQuery(text: string, query: string): ReactNode {
+  if (!query.trim()) return text;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const index = lowerText.indexOf(lowerQuery);
+  if (index < 0) return text;
+
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark className="rounded bg-primary/20 px-0.5">
+        {text.slice(index, index + query.length)}
+      </mark>
+      {text.slice(index + query.length)}
+    </>
+  );
+}
+
 export function ConversationList({
   conversations,
   selectedId,
@@ -36,13 +54,7 @@ export function ConversationList({
   const listRef = useRef<HTMLDivElement>(null);
   const scrollTopRef = useRef(0);
 
-  const filtered = conversations.filter((conv) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const name = conv.contact?.name.toLowerCase() ?? "";
-    const preview = conv.lastMessagePreview.toLowerCase();
-    return name.includes(q) || preview.includes(q);
-  });
+  const filtered = conversations;
 
   useEffect(() => {
     const viewport = listRef.current?.querySelector(
@@ -75,7 +87,7 @@ export function ConversationList({
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Поиск диалогов..."
+            placeholder="Поиск по имени и сообщениям..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-8"
@@ -133,7 +145,10 @@ export function ConversationList({
                           conv.awaitingReply && "font-semibold",
                         )}
                       >
-                        {conv.contact?.name ?? "Неизвестный контакт"}
+                        {highlightQuery(
+                          conv.contact?.name ?? "Неизвестный контакт",
+                          searchQuery,
+                        )}
                       </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
                         {formatConversationTime(new Date(conv.updatedAt))}
@@ -141,7 +156,14 @@ export function ConversationList({
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <p className="truncate text-xs text-muted-foreground">
-                        {conv.lastMessagePreview}
+                        {conv.searchMatch ? (
+                          <>
+                            <span className="text-primary/80">↳ </span>
+                            {highlightQuery(conv.searchMatch, searchQuery)}
+                          </>
+                        ) : (
+                          highlightQuery(conv.lastMessagePreview, searchQuery)
+                        )}
                       </p>
                       {conv.unreadCount > 0 && (
                         <Badge

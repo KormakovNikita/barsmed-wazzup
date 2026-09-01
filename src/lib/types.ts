@@ -108,6 +108,8 @@ export interface Conversation {
   unreadCount: number;
   lastMessagePreview: string;
   updatedAt: string;
+  /** Snippet from a matching message when searching */
+  searchMatch?: string;
 }
 
 export interface ConversationDetail extends Conversation {

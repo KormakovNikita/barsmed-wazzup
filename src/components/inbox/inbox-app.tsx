@@ -38,6 +38,7 @@ export function InboxApp() {
     byChannel: { channel: Channel; count: number; unread: number }[];
   }>({ totalUnread: 0, byChannel: [] });
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -64,6 +65,13 @@ export function InboxApp() {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchStats = useCallback(async () => {
     const [statsRes, integrationsRes] = await Promise.all([
       fetch("/api/stats"),
@@ -78,11 +86,20 @@ export function InboxApp() {
 
   const fetchConversations = useCallback(async () => {
     try {
-      const params =
-        activeChannel !== "all" ? `?channel=${activeChannel}` : "";
-      const res = await fetch(`/api/conversations${params}`, {
-        signal: AbortSignal.timeout(15000),
-      });
+      const params = new URLSearchParams();
+      if (activeChannel !== "all") {
+        params.set("channel", activeChannel);
+      }
+      if (debouncedSearchQuery) {
+        params.set("q", debouncedSearchQuery);
+      }
+      const query = params.toString();
+      const res = await fetch(
+        `/api/conversations${query ? `?${query}` : ""}`,
+        {
+          signal: AbortSignal.timeout(15000),
+        },
+      );
       if (!res.ok) {
         throw new Error(`Не удалось загрузить диалоги (${res.status})`);
       }
@@ -96,7 +113,7 @@ export function InboxApp() {
     } finally {
       setLoadingConversations(false);
     }
-  }, [activeChannel]);
+  }, [activeChannel, debouncedSearchQuery]);
 
   const fetchConversationDetail = useCallback(
     async (id: string, options?: { silent?: boolean }) => {

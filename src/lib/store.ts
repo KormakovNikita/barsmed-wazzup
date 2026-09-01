@@ -697,6 +697,91 @@ export function listConversations(channel?: Channel | "all"): Conversation[] {
   return rows.map(rowToConversation);
 }
 
+function buildSearchSnippet(content: string, query: string): string {
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const index = lowerContent.indexOf(lowerQuery);
+  if (index < 0) {
+    return content.length > 80 ? `${content.slice(0, 77)}…` : content;
+  }
+
+  const start = Math.max(0, index - 24);
+  const end = Math.min(content.length, index + query.length + 24);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < content.length ? "…" : "";
+  return `${prefix}${content.slice(start, end)}${suffix}`;
+}
+
+export function searchConversations(
+  query: string,
+  channel?: Channel | "all",
+): Conversation[] {
+  seedDemoDataIfEmpty();
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return listConversations(channel);
+  }
+
+  const like = `%${trimmed.toLowerCase()}%`;
+  const channelFilter =
+    channel && channel !== "all" ? "AND c.channel = ?" : "";
+  const params =
+    channel && channel !== "all" ? [like, like, like, like, like, like, channel] : [like, like, like, like, like, like];
+
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT c.*
+       FROM conversations c
+       JOIN contacts ct ON ct.id = c.contact_id
+       WHERE (
+         LOWER(ct.name) LIKE ?
+         OR LOWER(COALESCE(ct.phone, '')) LIKE ?
+         OR LOWER(COALESCE(ct.email, '')) LIKE ?
+         OR LOWER(c.last_message_preview) LIKE ?
+         OR EXISTS (
+           SELECT 1 FROM messages m
+           WHERE m.conversation_id = c.id AND LOWER(m.content) LIKE ?
+         )
+         OR EXISTS (
+           SELECT 1 FROM messages m
+           JOIN message_attachments ma ON ma.message_id = m.id
+           WHERE m.conversation_id = c.id AND LOWER(COALESCE(ma.file_name, '')) LIKE ?
+         )
+       )
+       ${channelFilter}
+       ORDER BY c.awaiting_reply DESC, c.updated_at DESC`,
+    )
+    .all(...params) as ConversationRow[];
+
+  const findMessageMatch = getDb().prepare(
+    `SELECT content FROM messages
+     WHERE conversation_id = ? AND LOWER(content) LIKE ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+  );
+
+  return rows.map((row) => {
+    const conversation = rowToConversation(row);
+    const lowerPreview = conversation.lastMessagePreview.toLowerCase();
+    const lowerQuery = trimmed.toLowerCase();
+    if (lowerPreview.includes(lowerQuery)) {
+      return conversation;
+    }
+
+    const match = findMessageMatch.get(conversation.id, like) as
+      | { content: string }
+      | undefined;
+    if (match?.content) {
+      return {
+        ...conversation,
+        searchMatch: buildSearchSnippet(match.content, trimmed),
+      };
+    }
+
+    return conversation;
+  });
+}
+
 export function getConversationDetail(id: string): ConversationDetail | null {
   const row = getDb()
     .prepare("SELECT * FROM conversations WHERE id = ?")

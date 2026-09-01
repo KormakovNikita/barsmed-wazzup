@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
+import { EmojiPicker } from "@/components/inbox/emoji-picker";
 import type { ConversationDetail, Message, MessageAttachment } from "@/lib/types";
 import {
   formatMessageDateLabel,
@@ -225,6 +226,7 @@ export function ChatPanel({
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageCountRef = useRef(0);
   const conversationIdRef = useRef<string | null>(null);
 
@@ -299,6 +301,25 @@ export function ChatPanel({
     e.preventDefault();
     setSelectedFile(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function insertEmoji(emoji: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setDraft((prev) => prev + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? draft.length;
+    const end = textarea.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    setDraft(next);
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + emoji.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
   }
 
   if (loading) {
@@ -582,7 +603,9 @@ export function ChatPanel({
           >
             <Paperclip className="h-4 w-4" />
           </Button>
+          <EmojiPicker onSelect={insertEmoji} disabled={sending} />
           <Textarea
+            ref={textareaRef}
             placeholder={
               replyToMessage
                 ? "Напишите ответ..."
