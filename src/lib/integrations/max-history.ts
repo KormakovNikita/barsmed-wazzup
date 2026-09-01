@@ -16,6 +16,7 @@ import {
   listConversations,
   listMaxKnownChatIds,
   refreshConversationReplyState,
+  backfillMissingMaxExternalIds,
 } from "@/lib/store";
 
 export interface MaxHistoryMessage {
@@ -167,6 +168,7 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
   imported: number;
   skipped: number;
   attachmentsAdded: number;
+  externalIdsPatched?: number;
   totalFetched: number;
   error?: string;
 }> {
@@ -211,6 +213,10 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
   });
 
   const result = await importMaxHistoryWithMedia(conversation.id, history);
+  const externalIdsPatched = backfillMissingMaxExternalIds(
+    conversation.id,
+    history,
+  );
 
   return {
     ok: true,
@@ -219,6 +225,7 @@ export async function syncMaxChatHistory(chatId: string): Promise<{
     imported: result.imported,
     skipped: result.skipped,
     attachmentsAdded: result.attachmentsAdded,
+    externalIdsPatched,
     totalFetched: history.length,
   };
 }

@@ -318,6 +318,7 @@ export function InboxApp() {
             onSimulateIncoming={handleSimulateIncoming}
             onDismissReply={handleDismissReply}
             sendError={sendError}
+            onReplyError={setSendError}
           />
           <ContactPanel
             conversation={

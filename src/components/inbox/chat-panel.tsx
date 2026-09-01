@@ -43,6 +43,7 @@ interface ChatPanelProps {
   onSimulateIncoming: () => Promise<void>;
   onDismissReply?: () => Promise<void>;
   sendError?: string | null;
+  onReplyError?: (error: string | null) => void;
 }
 
 function ReplyQuote({
@@ -67,6 +68,17 @@ function ReplyQuote({
       </p>
     </div>
   );
+}
+
+function messageSupportsReply(
+  msg: Message,
+  channel: ConversationDetail["channel"],
+): boolean {
+  if (channel === "telegram") return true;
+  if (channel === "max") {
+    return Boolean(msg.externalId?.startsWith("mid."));
+  }
+  return false;
 }
 
 function messagePreview(msg: Message): string {
@@ -155,6 +167,7 @@ export function ChatPanel({
   onSimulateIncoming,
   onDismissReply,
   sendError,
+  onReplyError,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -249,6 +262,18 @@ export function ChatPanel({
     conversation.channel === "telegram" || conversation.channel === "max";
   const canDeleteMessages = conversation.channel === "telegram";
 
+  function selectMessageForReply(msg: Message) {
+    if (!conversation || !canReplyToMessages) return;
+    if (!messageSupportsReply(msg, conversation.channel)) {
+      onReplyError?.(
+        "На это сообщение нельзя ответить — нет ID в MAX. Запустите синхронизацию истории.",
+      );
+      return;
+    }
+    onReplyError?.(null);
+    setReplyToMessage(msg);
+  }
+
   async function handleDismissReply() {
     if (!onDismissReply || dismissing) return;
     setDismissing(true);
@@ -325,7 +350,7 @@ export function ChatPanel({
                         isOut ? "order-3" : "order-1",
                       )}
                       title="Ответить"
-                      onClick={() => setReplyToMessage(msg)}
+                      onClick={() => selectMessageForReply(msg)}
                     >
                       <CornerUpLeft className="h-4 w-4" />
                     </Button>
@@ -339,12 +364,12 @@ export function ChatPanel({
                       canReplyToMessages && "cursor-pointer hover:brightness-95",
                     )}
                     onDoubleClick={() => {
-                      if (canReplyToMessages) setReplyToMessage(msg);
+                      if (canReplyToMessages) selectMessageForReply(msg);
                     }}
                     onContextMenu={(event) => {
                       if (!canReplyToMessages) return;
                       event.preventDefault();
-                      setReplyToMessage(msg);
+                      selectMessageForReply(msg);
                     }}
                   >
                     {msg.replyTo && (
@@ -382,7 +407,7 @@ export function ChatPanel({
                         <MoreVertical className="h-4 w-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align={isOut ? "end" : "start"}>
-                        <DropdownMenuItem onClick={() => setReplyToMessage(msg)}>
+                        <DropdownMenuItem onClick={() => selectMessageForReply(msg)}>
                           <CornerUpLeft className="mr-2 h-4 w-4" />
                           Ответить
                         </DropdownMenuItem>

@@ -301,9 +301,69 @@ function resolveReplyToChannelMessageId(
     .prepare("SELECT external_id FROM messages WHERE id = ?")
     .get(replyToMessageId) as { external_id: string | null } | undefined;
   if (!row?.external_id) return undefined;
-  const tgMatch = row.external_id.match(/^tg-user-(\d+)-/);
+  const externalId = row.external_id;
+  const tgMatch = externalId.match(/^tg-user-(\d+)-/);
   if (tgMatch) return tgMatch[1];
-  return row.external_id;
+  if (externalId.startsWith("mid.")) return externalId;
+  const maxMatch = externalId.match(/^max-(mid\.[a-zA-Z0-9._-]+)$/);
+  if (maxMatch) return maxMatch[1];
+  return externalId;
+}
+
+export function backfillMissingMaxExternalIds(
+  conversationId: string,
+  items: Array<{
+    externalId: string;
+    content: string;
+    direction: "in" | "out";
+    createdAt: string;
+  }>,
+): number {
+  const missing = getDb()
+    .prepare(
+      `SELECT id, content, direction, created_at
+       FROM messages
+       WHERE conversation_id = ?
+         AND (external_id IS NULL OR external_id = '')`,
+    )
+    .all(conversationId) as Array<{
+    id: string;
+    content: string;
+    direction: "in" | "out";
+    created_at: string;
+  }>;
+
+  if (!missing.length) return 0;
+
+  let updated = 0;
+  const tx = getDb().transaction(() => {
+    for (const message of missing) {
+      const messageTime = new Date(message.created_at).getTime();
+      const normalizedContent = message.content.trim();
+
+      const match = items.find((item) => {
+        if (item.direction !== message.direction) return false;
+        if (!item.externalId.startsWith("mid.")) return false;
+        const itemTime = new Date(item.createdAt).getTime();
+        if (Math.abs(itemTime - messageTime) > 120_000) return false;
+        if (normalizedContent && item.content.trim() === normalizedContent) {
+          return true;
+        }
+        if (!normalizedContent && !item.content.trim()) return true;
+        return false;
+      });
+
+      if (!match) continue;
+
+      getDb()
+        .prepare("UPDATE messages SET external_id = ? WHERE id = ?")
+        .run(match.externalId, message.id);
+      updated += 1;
+    }
+  });
+  tx();
+
+  return updated;
 }
 
 function upsertContact(contact: Contact): void {
@@ -1210,6 +1270,14 @@ export async function sendMessage(
   const conversation = rowToConversation(row);
   const senderId = operatorId ?? conversation.assignedTo ?? "op-1";
   const replyToChannelMessageId = resolveReplyToChannelMessageId(replyToMessageId);
+
+  if (replyToMessageId && !replyToChannelMessageId && conversation.channel === "max") {
+    return {
+      message: null,
+      error:
+        "Не удалось ответить: у сообщения нет ID MAX. Запустите синхронизацию истории в настройках интеграций.",
+    };
+  }
 
   const message: Message = {
     id: `m-${Date.now()}`,

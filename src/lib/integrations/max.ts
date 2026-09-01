@@ -251,9 +251,22 @@ export function parseMaxUpdate(update: MaxUpdate) {
 
   const body = update.message.body;
   const mediaAttachments =
-    body.attachments?.filter((attachment) =>
-      ["image", "video", "audio", "voice", "file"].includes(attachment.type),
-    ) ?? [];
+    body.attachments?.filter((attachment) => {
+      if (["image", "video", "audio", "voice", "file"].includes(attachment.type)) {
+        return true;
+      }
+      const payload = attachment.payload;
+      if (
+        payload &&
+        (payload.url || payload.token) &&
+        !["inline_keyboard", "contact", "sticker", "location", "share"].includes(
+          attachment.type,
+        )
+      ) {
+        return true;
+      }
+      return false;
+    }) ?? [];
   const text = body.text?.trim() ?? "";
 
   if (!text && mediaAttachments.length === 0) {

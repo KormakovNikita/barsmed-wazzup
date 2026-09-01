@@ -211,6 +211,31 @@ function findResolvedAttachment(
   );
 }
 
+async function downloadWithRetry(
+  url: string,
+  headers: HeadersInit,
+  attempts = 3,
+): Promise<Response | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, { cache: "no-store", headers });
+      if (response.ok) return response;
+      if (response.status >= 500 && attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    } catch (error) {
+      if (attempt === attempts - 1) {
+        console.error("[max-media] download failed:", error);
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
 export async function downloadMaxAttachments(
   attachments: MaxMessageAttachment[] | undefined,
   options?: { messageId?: string },
@@ -256,11 +281,8 @@ export async function downloadMaxAttachments(
         headers.Authorization = token;
       }
 
-      const response = await fetch(resolved.url, {
-        cache: "no-store",
-        headers,
-      });
-      if (!response.ok) continue;
+      const response = await downloadWithRetry(resolved.url, headers);
+      if (!response) continue;
 
       const buffer = Buffer.from(await response.arrayBuffer());
       if (!buffer.length) continue;
