@@ -42,12 +42,20 @@ export async function sendMaxMessage(
     params.set("user_id", payload.externalThreadId);
   }
 
+  const body: Record<string, unknown> = { text: payload.content };
+  if (payload.replyToChannelMessageId) {
+    body.link = {
+      type: "reply",
+      mid: payload.replyToChannelMessageId,
+    };
+  }
+
   const response = await fetch(
     `${getMaxApiBase()}/messages?${params.toString()}`,
     {
       method: "POST",
       headers: maxHeaders(),
-      body: JSON.stringify({ text: payload.content }),
+      body: JSON.stringify(body),
     },
   );
 
@@ -170,12 +178,30 @@ export interface MaxUpdate {
       user_id?: number;
       chat_type?: string;
     };
+    link?: {
+      type?: string;
+      mid?: string;
+      message?: { mid?: string; body?: { mid?: string } };
+      messageBody?: { mid?: string };
+    };
     body?: {
       mid?: string;
       text?: string;
       attachments?: import("./max-media").MaxMessageAttachment[];
     };
   };
+}
+
+function getMaxReplyToMessageId(
+  link: NonNullable<MaxUpdate["message"]>["link"],
+): string | undefined {
+  if (!link || link.type?.toLowerCase() !== "reply") return undefined;
+  return (
+    link.mid ??
+    link.message?.mid ??
+    link.message?.body?.mid ??
+    link.messageBody?.mid
+  );
 }
 
 export function parseMaxUpdate(update: MaxUpdate) {
@@ -202,7 +228,7 @@ export function parseMaxUpdate(update: MaxUpdate) {
   const body = update.message.body;
   const mediaAttachments =
     body.attachments?.filter((attachment) =>
-      ["image", "video", "audio", "file"].includes(attachment.type),
+      ["image", "video", "audio", "voice", "file"].includes(attachment.type),
     ) ?? [];
   const text = body.text?.trim() ?? "";
 
@@ -215,6 +241,8 @@ export function parseMaxUpdate(update: MaxUpdate) {
 
   const recipient = update.message.recipient;
   const chatId = recipient?.chat_id;
+
+  const replyToChannelMessageId = getMaxReplyToMessageId(update.message?.link);
 
   if (sender.is_bot) {
     const customerUserId = recipient?.user_id;
@@ -230,10 +258,12 @@ export function parseMaxUpdate(update: MaxUpdate) {
       maxChatId: chatId ? String(chatId) : undefined,
       maxUserId: customerUserId ? String(customerUserId) : undefined,
       externalMessageId: `max-${body.mid ?? update.timestamp}`,
+      channelMessageId: body.mid,
       content: text || maxAttachmentPreview(mediaAttachments),
       senderName: sender.first_name ?? "БАРСМЕД",
       senderUsername: sender.username,
       direction: "out" as const,
+      replyToChannelMessageId,
     };
   }
 
@@ -250,10 +280,12 @@ export function parseMaxUpdate(update: MaxUpdate) {
     maxChatId: chatId ? String(chatId) : undefined,
     maxUserId: userId,
     externalMessageId: `max-${body.mid ?? update.timestamp}`,
+    channelMessageId: body.mid,
     content: text || maxAttachmentPreview(mediaAttachments),
     senderName: name || sender.username || "MAX user",
     senderUsername: sender.username,
     direction: "in" as const,
+    replyToChannelMessageId,
   };
 }
 

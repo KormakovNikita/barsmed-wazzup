@@ -137,7 +137,9 @@ async function importMaxHistoryWithMedia(
 
   for (const item of history) {
     const downloaded = item.attachments?.length
-      ? await downloadMaxAttachments(item.attachments)
+      ? await downloadMaxAttachments(item.attachments, {
+          messageId: item.externalId,
+        })
       : undefined;
 
     const result = importMessageWithAttachments(conversationId, {

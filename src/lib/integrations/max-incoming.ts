@@ -1,5 +1,8 @@
 import { parseMaxUpdate, type MaxUpdate } from "@/lib/integrations/max";
-import { downloadMaxAttachments, maxAttachmentPreview } from "@/lib/integrations/max-media";
+import {
+  downloadMaxAttachments,
+  maxAttachmentPreview,
+} from "@/lib/integrations/max-media";
 import { processIncomingMessage } from "@/lib/store";
 
 export async function processMaxIncomingUpdate(
@@ -9,20 +12,29 @@ export async function processMaxIncomingUpdate(
   if (!parsed) return null;
 
   const rawAttachments = update.message?.body?.attachments;
-  const attachments = await downloadMaxAttachments(rawAttachments);
+  const messageMid =
+    update.message?.body?.mid ??
+    parsed.channelMessageId ??
+    parsed.externalMessageId.replace(/^max-/, "");
+
+  const attachments = await downloadMaxAttachments(rawAttachments, {
+    messageId: messageMid,
+  });
 
   let content = parsed.content;
-  if (!content.trim() && attachments.length) {
-    content = maxAttachmentPreview(rawAttachments ?? []);
-  } else if (!content.trim()) {
-    return null;
+  if (!content.trim() && rawAttachments?.length) {
+    content = maxAttachmentPreview(rawAttachments);
   }
+  if (!content.trim()) return null;
 
   const result = processIncomingMessage({
     channel: "max",
     externalThreadId: parsed.externalThreadId,
     externalMessageId: parsed.externalMessageId,
-    channelMessageId: parsed.externalMessageId.replace(/^max-/, ""),
+    channelMessageId:
+      parsed.channelMessageId ??
+      parsed.externalMessageId.replace(/^max-/, ""),
+    replyToChannelMessageId: parsed.replyToChannelMessageId,
     content,
     senderName: parsed.senderName,
     senderUsername: parsed.senderUsername,

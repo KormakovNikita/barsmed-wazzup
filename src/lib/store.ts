@@ -301,7 +301,9 @@ function resolveReplyToChannelMessageId(
     .prepare("SELECT external_id FROM messages WHERE id = ?")
     .get(replyToMessageId) as { external_id: string | null } | undefined;
   if (!row?.external_id) return undefined;
-  return row.external_id.match(/^tg-user-(\d+)-/)?.[1] ?? row.external_id;
+  const tgMatch = row.external_id.match(/^tg-user-(\d+)-/);
+  if (tgMatch) return tgMatch[1];
+  return row.external_id;
 }
 
 function upsertContact(contact: Contact): void {

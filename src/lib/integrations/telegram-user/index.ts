@@ -326,7 +326,7 @@ export async function startTelegramUserListener() {
   c.addEventHandler(
     async (event) => {
       try {
-        await processTelegramUserMessage(event.message);
+        await processTelegramUserMessage(event.message, c);
       } catch (error) {
         console.error("[telegram-user] incoming handler error:", error);
       }

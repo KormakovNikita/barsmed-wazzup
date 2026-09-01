@@ -245,7 +245,9 @@ export function ChatPanel({
     );
   }
 
-  const canUseTelegramActions = conversation.channel === "telegram";
+  const canReplyToMessages =
+    conversation.channel === "telegram" || conversation.channel === "max";
+  const canDeleteMessages = conversation.channel === "telegram";
 
   async function handleDismissReply() {
     if (!onDismissReply || dismissing) return;
@@ -319,10 +321,10 @@ export function ChatPanel({
                       isOut
                         ? "rounded-br-md bg-primary text-primary-foreground"
                         : "rounded-bl-md bg-muted",
-                      canUseTelegramActions && "cursor-pointer hover:brightness-95",
+                      canReplyToMessages && "cursor-pointer hover:brightness-95",
                     )}
                     onDoubleClick={() => {
-                      if (canUseTelegramActions) setReplyToMessage(msg);
+                      if (canReplyToMessages) setReplyToMessage(msg);
                     }}
                   >
                     {msg.replyTo && (
@@ -351,7 +353,7 @@ export function ChatPanel({
                     </div>
                   </div>
 
-                  {canUseTelegramActions && (
+                  {canReplyToMessages && (
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -369,18 +371,22 @@ export function ChatPanel({
                           <CornerUpLeft className="mr-2 h-4 w-4" />
                           Ответить
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => onDeleteMessage(msg.id, false)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Удалить у меня
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => onDeleteMessage(msg.id, true)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Удалить у всех
-                        </DropdownMenuItem>
+                        {canDeleteMessages && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => onDeleteMessage(msg.id, false)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Удалить у меня
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => onDeleteMessage(msg.id, true)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Удалить у всех
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}

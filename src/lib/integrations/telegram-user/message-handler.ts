@@ -1,9 +1,10 @@
 import { getPeerId } from "teleproto/Utils";
 import type { Api } from "teleproto/tl";
 import type { CustomMessage } from "teleproto/tl/custom/message";
+import type { TelegramClient } from "teleproto";
 import { mediaPreviewLabel } from "@/lib/media-storage";
 import { processIncomingMessage } from "@/lib/store";
-import { extractTelegramMedia } from "./media";
+import { extractTelegramMedia, inspectTelegramMedia } from "./media";
 
 type IncomingTelegramMessage = CustomMessage | Api.Message;
 
@@ -82,6 +83,7 @@ function getReplyToChannelMessageId(
 
 export async function processTelegramUserMessage(
   message: IncomingTelegramMessage,
+  client?: TelegramClient | null,
 ): Promise<{ conversationId: string; created: boolean } | null> {
   if (!message || ("out" in message && message.out)) return null;
 
@@ -94,9 +96,11 @@ export async function processTelegramUserMessage(
   const messageId = "id" in message ? message.id : 0;
   const messageDate = "date" in message ? message.date : 0;
 
+  const mediaInfo = inspectTelegramMedia(message);
+
   let attachments: import("@/lib/types").IncomingAttachmentPayload[] | undefined;
   try {
-    const media = await extractTelegramMedia(message);
+    const media = await extractTelegramMedia(message, client);
     attachments = media ? [media] : undefined;
   } catch (error) {
     console.error("[telegram-user] media download failed:", error);
@@ -108,9 +112,11 @@ export async function processTelegramUserMessage(
     text ||
     (attachments?.length
       ? mediaPreviewLabel(attachments[0].type, attachments[0].fileName)
-      : "");
+      : mediaInfo
+        ? mediaPreviewLabel(mediaInfo.type, mediaInfo.fileName)
+        : "");
 
-  if (!content && !attachments?.length) return null;
+  if (!content && !attachments?.length && !mediaInfo) return null;
 
   const result = processIncomingMessage({
     channel: "telegram",
@@ -118,7 +124,13 @@ export async function processTelegramUserMessage(
     externalMessageId: `tg-user-${messageId}-${messageDate}`,
     channelMessageId: String(messageId),
     replyToChannelMessageId: getReplyToChannelMessageId(message),
-    content: content || mediaPreviewLabel(attachments![0].type, attachments![0].fileName),
+    content:
+      content ||
+      (attachments?.length
+        ? mediaPreviewLabel(attachments[0].type, attachments[0].fileName)
+        : mediaInfo
+          ? mediaPreviewLabel(mediaInfo.type, mediaInfo.fileName)
+          : ""),
     senderName: name,
     senderUsername: username,
     attachments,

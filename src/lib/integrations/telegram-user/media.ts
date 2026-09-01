@@ -1,4 +1,5 @@
 import { Api } from "teleproto/tl";
+import type { TelegramClient } from "teleproto";
 import type { CustomMessage } from "teleproto/tl/custom/message";
 import type {
   IncomingAttachmentPayload,
@@ -6,6 +7,15 @@ import type {
 } from "@/lib/types";
 
 type IncomingTelegramMessage = CustomMessage | Api.Message;
+
+export interface TelegramMediaInfo {
+  type: MessageMediaType;
+  mimeType: string;
+  fileName?: string;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+}
 
 function detectMediaType(
   media: Api.TypeMessageMedia,
@@ -30,6 +40,7 @@ function detectMediaType(
       if (mime.startsWith("image/")) return "image";
       if (mime.startsWith("video/")) return "video";
       if (mime.startsWith("audio/")) return "audio";
+      if (mime === "audio/ogg" || mime === "application/ogg") return "voice";
     }
     return "document";
   }
@@ -37,7 +48,8 @@ function detectMediaType(
     const lower = fileName.toLowerCase();
     if (/\.(jpe?g|png|gif|webp)$/.test(lower)) return "image";
     if (/\.(mp4|webm|mov)$/.test(lower)) return "video";
-    if (/\.(mp3|ogg|opus|wav)$/.test(lower)) return "audio";
+    if (/\.(ogg|opus)$/.test(lower)) return "voice";
+    if (/\.(mp3|wav|m4a)$/.test(lower)) return "audio";
   }
   return "document";
 }
@@ -101,12 +113,14 @@ function extractDimensions(
 function guessMimeFromMedia(
   media: Api.TypeMessageMedia,
   fileName?: string,
+  type?: MessageMediaType,
 ): string {
   if (media instanceof Api.MessageMediaDocument) {
     const doc = media.document;
     if (doc instanceof Api.Document && doc.mimeType) return doc.mimeType;
   }
   if (media instanceof Api.MessageMediaPhoto) return "image/jpeg";
+  if (type === "voice") return "audio/ogg";
   if (fileName) {
     const lower = fileName.toLowerCase();
     if (/\.(jpe?g)$/.test(lower)) return "image/jpeg";
@@ -122,40 +136,85 @@ function guessMimeFromMedia(
   return "application/octet-stream";
 }
 
-export async function extractTelegramMedia(
+export function inspectTelegramMedia(
   message: IncomingTelegramMessage,
-): Promise<IncomingAttachmentPayload | null> {
+): TelegramMediaInfo | null {
   if (!("media" in message) || !message.media) return null;
   if (message.media instanceof Api.MessageMediaEmpty) return null;
   if (message.media instanceof Api.MessageMediaWebPage) return null;
 
   const fileName = extractFileName(message.media);
   const type = detectMediaType(message.media, fileName);
-  const mimeType = guessMimeFromMedia(message.media, fileName);
+  const mimeType = guessMimeFromMedia(message.media, fileName, type);
   const fileSize = extractFileSize(message.media);
   const dims = extractDimensions(message.media);
-
-  if (!("downloadMedia" in message) || typeof message.downloadMedia !== "function") {
-    return null;
-  }
-
-  const downloaded = await message.downloadMedia({});
-  if (!downloaded) return null;
-
-  const buffer = Buffer.isBuffer(downloaded)
-    ? downloaded
-    : Buffer.from(String(downloaded));
-
-  if (!buffer.length) return null;
 
   return {
     type,
     mimeType,
     fileName,
     fileSize,
-    buffer,
     width: dims.width,
     height: dims.height,
+  };
+}
+
+async function downloadTelegramMediaBuffer(
+  message: IncomingTelegramMessage,
+  client?: TelegramClient | null,
+): Promise<Buffer | null> {
+  if ("downloadMedia" in message && typeof message.downloadMedia === "function") {
+    try {
+      const downloaded = await message.downloadMedia({});
+      if (downloaded) {
+        const buffer = Buffer.isBuffer(downloaded)
+          ? downloaded
+          : Buffer.from(String(downloaded));
+        if (buffer.length) return buffer;
+      }
+    } catch (error) {
+      console.error("[telegram-user] message.downloadMedia failed:", error);
+    }
+  }
+
+  if (client && "media" in message && message.media) {
+    try {
+      const downloaded = await client.downloadMedia(
+        message as Parameters<TelegramClient["downloadMedia"]>[0],
+        {},
+      );
+      if (downloaded) {
+        const buffer = Buffer.isBuffer(downloaded)
+          ? downloaded
+          : Buffer.from(String(downloaded));
+        if (buffer.length) return buffer;
+      }
+    } catch (error) {
+      console.error("[telegram-user] client.downloadMedia failed:", error);
+    }
+  }
+
+  return null;
+}
+
+export async function extractTelegramMedia(
+  message: IncomingTelegramMessage,
+  client?: TelegramClient | null,
+): Promise<IncomingAttachmentPayload | null> {
+  const info = inspectTelegramMedia(message);
+  if (!info) return null;
+
+  const buffer = await downloadTelegramMediaBuffer(message, client);
+  if (!buffer) return null;
+
+  return {
+    type: info.type,
+    mimeType: info.mimeType,
+    fileName: info.fileName,
+    fileSize: info.fileSize ?? buffer.length,
+    buffer,
+    width: info.width,
+    height: info.height,
   };
 }
 
@@ -169,6 +228,7 @@ export function mediaTypeFromFile(
   const lower = (fileName ?? "").toLowerCase();
   if (/\.(jpe?g|png|gif|webp)$/.test(lower)) return "image";
   if (/\.(mp4|webm|mov)$/.test(lower)) return "video";
-  if (/\.(mp3|ogg|opus|wav)$/.test(lower)) return "audio";
+  if (/\.(ogg|opus)$/.test(lower)) return "voice";
+  if (/\.(mp3|wav|m4a)$/.test(lower)) return "audio";
   return "document";
 }
