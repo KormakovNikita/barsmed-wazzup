@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { AppSidebar } from "@/components/inbox/app-sidebar";
-import { ConversationList } from "@/components/inbox/conversation-list";
+import { ConversationList, type ConversationListFilter } from "@/components/inbox/conversation-list";
 import { ChatPanel } from "@/components/inbox/chat-panel";
 import { ContactPanel } from "@/components/inbox/contact-panel";
 import { NewConversationDialog } from "@/components/inbox/new-conversation-dialog";
@@ -84,6 +84,7 @@ export function InboxApp() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<ConversationListFilter>("all");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [integrationStatus, setIntegrationStatus] = useState<{
     telegram: {
@@ -393,12 +394,21 @@ export function InboxApp() {
     selectedId && !activeConversation && loadingDetail,
   );
 
+  const awaitingCount = conversations.filter((c) => c.awaitingReply).length;
+  const filteredConversations =
+    listFilter === "awaiting"
+      ? conversations.filter((c) => c.awaitingReply)
+      : conversations;
+
   const conversationListProps = {
-    conversations,
+    conversations: filteredConversations,
     selectedId,
     onSelect: handleSelect,
     searchQuery,
     onSearchChange: setSearchQuery,
+    listFilter,
+    onListFilterChange: setListFilter,
+    awaitingCount,
     loading: loadingConversations && conversations.length === 0,
     error: fetchError,
   };
@@ -413,8 +423,8 @@ export function InboxApp() {
         integrationStatus={integrationStatus}
       />
 
-      <div className="hidden h-full min-h-0 w-80 shrink-0 flex-col border-r border-border/60 md:flex">
-        <div className="border-b border-border/60 p-3">
+      <div className="hidden h-full min-h-0 w-[340px] shrink-0 flex-col border-r border-border/60 md:flex">
+        <div className="border-b border-border/60 bg-card/30 p-3">
           <NewConversationDialog
             onCreated={(id) => {
               setSelectedId(id);

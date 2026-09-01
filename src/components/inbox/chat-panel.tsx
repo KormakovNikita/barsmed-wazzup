@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
+import { ContactAvatar } from "@/components/inbox/contact-avatar";
 import { EmojiPicker } from "@/components/inbox/emoji-picker";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import type { ConversationDetail, Message, MessageAttachment } from "@/lib/types";
@@ -60,7 +61,7 @@ function ReplyQuote({
     <div
       className={cn(
         "mb-2 border-l-2 pl-2 text-xs opacity-90",
-        isOut ? "border-primary-foreground/50" : "border-primary/50",
+        isOut ? "border-white/40" : "border-primary/40",
       )}
     >
       <p className="font-medium">
@@ -380,15 +381,21 @@ export function ChatPanel({
 
   if (!conversation) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-muted/20 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-2xl">
-          💬
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-chat-pattern px-6 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 shadow-sm">
+          <span className="text-3xl">💬</span>
         </div>
         <div>
-          <h2 className="font-semibold">Выберите диалог</h2>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            WhatsApp, Telegram, MAX, VK и Instagram — в одном окне
+          <h2 className="text-lg font-semibold">Выберите диалог</h2>
+          <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+            Все каналы в одном окне — отвечайте клиентам быстро и удобно
           </p>
+        </div>
+        <div className="mt-2 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+          <kbd className="rounded-md border bg-background px-2 py-1 shadow-sm">Enter</kbd>
+          <span>отправить</span>
+          <kbd className="rounded-md border bg-background px-2 py-1 shadow-sm">Shift+Enter</kbd>
+          <span>новая строка</span>
         </div>
       </div>
     );
@@ -421,18 +428,26 @@ export function ChatPanel({
   }
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {syncing && (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/10">
           <div className="h-full w-1/3 animate-[shimmer_1.2s_ease-in-out_infinite] bg-primary/60" />
         </div>
       )}
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3 backdrop-blur-sm">
-        <div>
-          <h2 className="font-semibold">{conversation.contact.name}</h2>
-          <ChannelLabel channel={conversation.channel} />
+      <header className="glass-panel flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <ContactAvatar name={conversation.contact.name} size="sm" />
+          <div className="min-w-0">
+            <h2 className="truncate font-semibold">{conversation.contact.name}</h2>
+            <ChannelLabel channel={conversation.channel} />
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {conversation.awaitingReply && (
+            <span className="hidden rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-800 sm:inline">
+              ждёт ответа
+            </span>
+          )}
           {conversation.awaitingReply && onDismissReply && (
             <Button
               variant="secondary"
@@ -441,22 +456,27 @@ export function ChatPanel({
               disabled={dismissing}
               className="text-xs"
             >
-              {dismissing ? "…" : "Можно не отвечать"}
+              {dismissing ? "…" : "Не отвечать"}
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onSimulateIncoming}
-            className="gap-1.5 text-xs"
-          >
-            <Zap className="h-3.5 w-3.5" />
-            Тест входящего
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60 bg-background hover:bg-accent"
+              title="Действия"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSimulateIncoming}>
+                <Zap className="mr-2 h-4 w-4" />
+                Тест входящего
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
-      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden scroll-smooth">
+      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden scroll-smooth bg-chat-pattern">
         <ScrollArea className="h-full">
           <div className="space-y-3 px-4 py-4">
             {conversation.messages.map((msg, index) => {
@@ -501,11 +521,11 @@ export function ChatPanel({
                   )}
                   <div
                     className={cn(
-                      "order-2 max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-[background-color,transform] duration-200",
+                      "order-2 max-w-[78%] rounded-2xl px-3.5 py-2 text-sm transition-all duration-150",
                       isOut
-                        ? "rounded-br-md bg-primary text-primary-foreground"
-                        : "rounded-bl-md bg-muted",
-                      canReplyToMessages && "cursor-pointer hover:brightness-[0.98]",
+                        ? "bubble-out rounded-br-sm"
+                        : "bubble-in rounded-bl-sm text-foreground",
+                      canReplyToMessages && "cursor-pointer hover:shadow-md",
                     )}
                     onDoubleClick={() => {
                       if (canReplyToMessages) selectMessageForReply(msg);
@@ -530,9 +550,7 @@ export function ChatPanel({
                     <div
                       className={cn(
                         "mt-1 flex items-center justify-end gap-1 text-[10px]",
-                        isOut
-                          ? "text-primary-foreground/70"
-                          : "text-muted-foreground",
+                        isOut ? "text-white/75" : "text-muted-foreground",
                       )}
                     >
                       <span>
@@ -582,9 +600,20 @@ export function ChatPanel({
         </ScrollArea>
       </div>
 
-      <footer className="shrink-0 border-t border-border/60 bg-background/95 p-3 backdrop-blur-sm">
+      <footer className="glass-panel shrink-0 border-t border-border/60 p-3">
         {sendError && (
-          <p className="mb-2 text-xs text-destructive">{sendError}</p>
+          <div className="mb-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+            <span className="mt-0.5 shrink-0">⚠️</span>
+            <p className="min-w-0 flex-1 leading-snug">{sendError}</p>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              onClick={() => onReplyError?.(null)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         )}
         {replyToMessage && (
           <div className="mb-2 flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
@@ -639,7 +668,7 @@ export function ChatPanel({
             </Button>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2 rounded-2xl border border-border/60 bg-background p-2 shadow-sm">
           <input
             ref={fileInputRef}
             type="file"
@@ -651,9 +680,9 @@ export function ChatPanel({
           />
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="icon"
-            className="shrink-0 self-end"
+            className="shrink-0 self-end text-muted-foreground hover:text-foreground"
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
           >
@@ -678,13 +707,13 @@ export function ChatPanel({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             rows={2}
-            className="min-h-[44px] resize-none"
+            className="min-h-[44px] flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           />
           <Button
             size="icon"
             onClick={handleSend}
             disabled={(!draft.trim() && !selectedFile) || sending}
-            className="shrink-0 self-end"
+            className="h-10 w-10 shrink-0 self-end rounded-xl shadow-sm"
           >
             <Send className="h-4 w-4" />
           </Button>
