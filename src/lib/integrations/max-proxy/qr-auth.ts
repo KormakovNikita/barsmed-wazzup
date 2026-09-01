@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import {
   createMaxProxyQrClient,
   resetMaxProxyClient,
@@ -94,17 +95,12 @@ export function getPendingMaxProxyQr(authId: string): PendingMaxProxyQr | null {
 
 export async function disconnectMaxProxySession(): Promise<void> {
   await resetMaxProxyClient();
-  const { unlinkSync, existsSync } = await import("fs");
-  const { join } = await import("path");
-  const { getMaxProxySessionName, ensureMaxProxySessionDir } = await import(
+  const { unlinkSync } = await import("fs");
+  const { getMaxProxySessionFilePath, ensureMaxProxySessionDir } = await import(
     "./session-path"
   );
   ensureMaxProxySessionDir();
-  const sessionFile = join(
-    process.cwd(),
-    "sessions",
-    `${getMaxProxySessionName()}.json`,
-  );
+  const sessionFile = getMaxProxySessionFilePath();
   if (existsSync(sessionFile)) {
     unlinkSync(sessionFile);
   }

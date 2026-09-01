@@ -1,28 +1,20 @@
-import { existsSync, lstatSync, mkdirSync, symlinkSync } from "fs";
-import { join, relative } from "path";
+import { existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
-/** Persist webmaxsocket sessions under .data (Docker volume). */
+/** Ensure persistent session directory exists (.data volume). */
 export function ensureMaxProxySessionDir(): void {
-  const dataSessions = join(process.cwd(), ".data", "max-proxy-sessions");
-  const defaultSessions = join(process.cwd(), "sessions");
+  mkdirSync(join(process.cwd(), ".data", "max-proxy-sessions"), {
+    recursive: true,
+  });
+}
 
-  mkdirSync(dataSessions, { recursive: true });
-
-  if (!existsSync(defaultSessions)) {
-    const relTarget = relative(process.cwd(), dataSessions);
-    symlinkSync(relTarget, defaultSessions);
-    return;
-  }
-
-  try {
-    const stat = lstatSync(defaultSessions);
-    if (stat.isSymbolicLink()) {
-      // already linked — ok
-      return;
-    }
-  } catch {
-    // ignore
-  }
+export function getMaxProxySessionFilePath(): string {
+  ensureMaxProxySessionDir();
+  return join(
+    process.cwd(),
+    "sessions",
+    `${getMaxProxySessionName()}.json`,
+  );
 }
 
 export function isMaxProxyEnabled(): boolean {
@@ -31,4 +23,8 @@ export function isMaxProxyEnabled(): boolean {
 
 export function getMaxProxySessionName(): string {
   return process.env.MAX_PROXY_SESSION_NAME ?? "hubdesk-max-proxy";
+}
+
+export function hasMaxProxySessionFile(): boolean {
+  return existsSync(getMaxProxySessionFilePath());
 }

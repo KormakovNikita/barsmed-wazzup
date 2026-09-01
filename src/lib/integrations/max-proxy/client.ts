@@ -1,5 +1,3 @@
-import { existsSync } from "fs";
-import { join } from "path";
 import {
   messageHasVoice,
   processMaxProxyVoiceMessage,
@@ -7,6 +5,7 @@ import {
 import {
   ensureMaxProxySessionDir,
   getMaxProxySessionName,
+  hasMaxProxySessionFile,
   isMaxProxyEnabled,
 } from "@/lib/integrations/max-proxy/session-path";
 import { listMaxKnownChatIds } from "@/lib/store";
@@ -30,12 +29,7 @@ function rememberProcessed(messageId: string): boolean {
 
 export function hasMaxProxySession(): boolean {
   ensureMaxProxySessionDir();
-  const sessionFile = join(
-    process.cwd(),
-    "sessions",
-    `${getMaxProxySessionName()}.json`,
-  );
-  return existsSync(sessionFile);
+  return hasMaxProxySessionFile();
 }
 
 export async function getMaxProxyClient(): Promise<WebMaxClient | null> {

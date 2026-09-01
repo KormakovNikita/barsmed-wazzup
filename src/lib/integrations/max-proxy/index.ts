@@ -10,4 +10,7 @@ export {
   getPendingMaxProxyQr,
   startMaxProxyQrAuth,
 } from "./qr-auth";
-export { isMaxProxyEnabled } from "./session-path";
+export {
+  hasMaxProxySessionFile,
+  isMaxProxyEnabled,
+} from "./session-path";
