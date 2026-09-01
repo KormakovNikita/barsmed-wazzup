@@ -1,29 +1,9 @@
 import { NextResponse } from "next/server";
 import { parseWazzupTelegramMessage } from "@/lib/integrations/wazzup-telegram";
-import { parseWazzupMaxMessage } from "@/lib/integrations/wazzup-max";
 import { processIncomingMessage } from "@/lib/store";
 
-interface WazzupWebhookMessage {
-  messageId: string;
-  channelId: string;
-  chatType: string;
-  chatId: string;
-  dateTime?: string;
-  type?: string;
-  status?: string;
-  text?: string;
-  contentUri?: string;
-  authorName?: string;
-  isEcho?: boolean;
-  contact?: {
-    name?: string;
-    username?: string;
-    phone?: string;
-  };
-}
-
 interface WazzupWebhookBody {
-  messages?: WazzupWebhookMessage[];
+  messages?: Parameters<typeof parseWazzupTelegramMessage>[0][];
 }
 
 export async function POST(request: Request) {
@@ -37,10 +17,8 @@ export async function POST(request: Request) {
   const processed: { conversationId: string; created: boolean }[] = [];
 
   for (const msg of body.messages ?? []) {
-    const maxPayload = await parseWazzupMaxMessage(msg);
-    const payload = maxPayload ?? parseWazzupTelegramMessage(msg);
+    const payload = parseWazzupTelegramMessage(msg);
     if (!payload) continue;
-
     const result = processIncomingMessage(payload);
     if (result) {
       processed.push({
@@ -50,9 +28,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({
-    ok: true,
-    processed: processed.length,
-    events: processed,
-  });
+  return NextResponse.json({ ok: true, processed: processed.length, events: processed });
 }

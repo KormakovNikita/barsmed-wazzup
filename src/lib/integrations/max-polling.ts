@@ -1,5 +1,4 @@
 import { isMaxConfigured, pollMaxUpdates } from "@/lib/integrations/max";
-import { shouldUseMaxBotIncoming } from "@/lib/integrations/wazzup-max";
 import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
 import { syncRecentMaxMessages } from "@/lib/integrations/max-sync-recent";
 
@@ -9,7 +8,7 @@ let listenerStarted = false;
 export async function drainMaxUpdates(): Promise<
   { conversationId: string; created: boolean }[]
 > {
-  if (!isMaxConfigured() || !shouldUseMaxBotIncoming()) return [];
+  if (!isMaxConfigured()) return [];
 
   const { updates, nextMarker } = await pollMaxUpdates(marker);
   if (nextMarker !== undefined) marker = nextMarker;
@@ -28,12 +27,7 @@ export async function drainMaxUpdates(): Promise<
 }
 
 export function startMaxPollingListener(): void {
-  if (
-    listenerStarted ||
-    !isMaxConfigured() ||
-    !shouldUseMaxBotIncoming() ||
-    process.env.WEBHOOK_BASE_URL
-  ) {
+  if (listenerStarted || !isMaxConfigured() || process.env.WEBHOOK_BASE_URL) {
     return;
   }
 

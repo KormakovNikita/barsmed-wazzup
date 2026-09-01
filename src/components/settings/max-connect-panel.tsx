@@ -10,26 +10,14 @@ interface MaxProfile {
   username?: string;
 }
 
-interface MaxWazzupRelay {
-  configured: boolean;
-  connected: boolean;
-  channelId: string | null;
-  channelName: string | null;
-  transport: string | null;
-  webhookUrl: string | null;
-  error?: string | null;
-}
-
 interface MaxStatus {
   configured: boolean;
   connected: boolean;
-  incomingMode?: "bot" | "wazzup";
-  mode: "webhook" | "polling" | "wazzup-webhook";
+  mode: "webhook" | "polling";
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
   webhooks?: { url: string }[];
-  wazzupRelay?: MaxWazzupRelay | null;
 }
 
 export function MaxConnectPanel() {
@@ -47,13 +35,11 @@ export function MaxConnectPanel() {
       setStatus({
         configured: data.max?.configured ?? false,
         connected: data.max?.connected ?? false,
-        incomingMode: data.max?.incomingMode ?? "bot",
         mode: data.max?.mode ?? "polling",
         profile: data.max?.profile ?? null,
         error: data.max?.error ?? null,
         webhookBaseUrl: data.webhookBaseUrl ?? null,
         webhooks: data.max?.webhooks ?? [],
-        wazzupRelay: data.max?.wazzupRelay ?? null,
       });
     } catch {
       setError("Не удалось загрузить статус MAX");
@@ -138,9 +124,7 @@ export function MaxConnectPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка регистрации webhook");
 
-      if (data.results?.wazzupMax?.ok) {
-        setMessage("Webhook Wazzup для MAX (голосовые) зарегистрирован");
-      } else if (data.results?.max?.ok) {
+      if (data.results?.max?.ok) {
         setMessage("Webhook MAX зарегистрирован");
       } else if (data.results?.max?.error) {
         throw new Error(data.results.max.error);
@@ -188,19 +172,8 @@ export function MaxConnectPanel() {
               <p className="text-muted-foreground">@{status.profile.username}</p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              Режим входящих:{" "}
-              {status.incomingMode === "wazzup"
-                ? "Wazzup webhook (голосовые на бота)"
-                : status.mode === "webhook"
-                  ? "Bot API webhook"
-                  : "Bot API polling"}
+              Режим: {status.mode === "webhook" ? "Webhook" : "Polling (без HTTPS)"}
             </p>
-            {status.incomingMode === "wazzup" && status.wazzupRelay?.connected && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Wazzup канал: {status.wazzupRelay.channelName ?? status.wazzupRelay.channelId}
-                {status.wazzupRelay.transport ? ` (${status.wazzupRelay.transport})` : ""}
-              </p>
-            )}
           </div>
           <Button
             variant="default"
@@ -217,46 +190,29 @@ export function MaxConnectPanel() {
               "Загрузить историю переписок MAX"
             )}
           </Button>
-          <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/30">
-            <p className="font-medium text-sky-950 dark:text-sky-100">
-              Голосовые на бота MAX
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <p className="font-medium text-amber-900 dark:text-amber-100">
+              Голосовые сообщения MAX (удержание кнопки записи)
             </p>
-            <p className="mt-1 text-xs text-sky-900 dark:text-sky-200">
-              Bot API MAX не отдаёт нативные голосовые ботам. Как в Wazzup:
-              подключите канал <strong>maxbot</strong> в Wazzup и задайте в{" "}
-              <code>.env.local</code>:
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+              Через Bot API они <strong>не передаются ботам</strong> — MAX не
+              отдаёт их ни в webhook, ни в истории сообщений. HubDesk получает
+              текст, фото, видео и файлы, но не нативные голосовые. Это
+              ограничение платформы, не ошибка интеграции.
             </p>
-            <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-xs">
-              MAX_INCOMING=wazzup{"\n"}
-              WAZZUP_API_KEY=ваш_ключ{"\n"}
-              WEBHOOK_BASE_URL=https://ваш-домен.ru
-            </pre>
-            <p className="mt-2 text-xs text-sky-900 dark:text-sky-200">
-              HubDesk получит входящие (включая голосовые) через Wazzup webhook,
-              а ответы по-прежнему отправляет через <strong>MAX_BOT_TOKEN</strong>.
+            <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
+              Варианты: попросить клиента отправить аудио как{" "}
+              <strong>файл</strong> (не голосовое); или подключить{" "}
+              <strong>MAX через Wazzup</strong> (живой аккаунт, не бот) — там
+              голосовые приходят как MP3.
             </p>
-            {status.incomingMode === "wazzup" && !status.wazzupRelay?.connected && (
-              <p className="mt-2 text-xs text-destructive">
-                {status.wazzupRelay?.error ??
-                  "Wazzup relay не подключён — проверьте WAZZUP_API_KEY и канал maxbot"}
-              </p>
-            )}
           </div>
-          {status.incomingMode !== "wazzup" && (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-              <p className="font-medium text-amber-900 dark:text-amber-100">
-                Сейчас: только Bot API
-              </p>
-              <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-                Текст, фото, видео и файлы приходят. Нативные голосовые (удержание
-                кнопки) — нет. Для них включите режим Wazzup выше.
-              </p>
-            </div>
-          )}
           <p className="text-xs text-muted-foreground">
-            Загружает историю из MAX API для всех известных диалогов. Для старых
-            переписок из Wazzup добавьте <code>WAZZUP_API_KEY</code> и нажмите
-            «Загрузить историю».
+            Загружает историю из MAX API для всех известных диалогов. Чтобы
+            подтянуть <strong>всех</strong> клиентов, которые писали раньше
+            через Wazzup, добавьте <code>WAZZUP_API_KEY</code> в{" "}
+            <code>.env.local</code> (API-ключ из личного кабинета Wazzup →
+            Интеграция → API).
           </p>
         </div>
       ) : status?.configured ? (
@@ -320,9 +276,7 @@ export function MaxConnectPanel() {
       {status?.webhookBaseUrl ? (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            {status.incomingMode === "wazzup"
-              ? `Webhook URL: ${status.webhookBaseUrl}/api/webhooks/wazzup`
-              : `Webhook URL: ${status.webhookBaseUrl}/api/webhooks/max`}
+            Webhook URL: {status.webhookBaseUrl}/api/webhooks/max
           </p>
           <Button
             variant="outline"
@@ -335,18 +289,11 @@ export function MaxConnectPanel() {
                 <Loader2 className="mr-2 size-4 animate-spin" />
                 Регистрация…
               </>
-            ) : status.incomingMode === "wazzup" ? (
-              "Зарегистрировать Wazzup webhook"
             ) : (
               "Зарегистрировать webhook"
             )}
           </Button>
         </div>
-      ) : status?.incomingMode === "wazzup" ? (
-        <p className="text-xs text-destructive">
-          Для голосовых через Wazzup нужен HTTPS: задайте{" "}
-          <code>WEBHOOK_BASE_URL=https://ваш-домен.ru</code>
-        </p>
       ) : (
         <p className="text-xs text-muted-foreground">
           Без HTTPS (домена) HubDesk получает сообщения через polling каждые 5 сек —

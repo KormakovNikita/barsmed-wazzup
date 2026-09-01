@@ -3,7 +3,6 @@ import {
 } from "@/lib/integrations/max-history";
 import type { MaxUpdate } from "@/lib/integrations/max";
 import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
-import { shouldUseMaxBotIncoming } from "@/lib/integrations/wazzup-max";
 import { listConversations } from "@/lib/store";
 
 const lastSyncedAt = new Map<string, number>();
@@ -44,9 +43,6 @@ export async function syncRecentMaxMessages(options?: {
   chatIds?: string[];
   limit?: number;
 }): Promise<{ synced: number; imported: number }> {
-  if (!shouldUseMaxBotIncoming()) {
-    return { synced: 0, imported: 0 };
-  }
   const limit = options?.limit ?? 8;
   const now = Date.now();
   const chatIds = new Set<string>();
