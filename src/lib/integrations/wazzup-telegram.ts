@@ -152,7 +152,12 @@ export async function registerWazzupWebhook(
     headers: wazzupHeaders(),
     body: JSON.stringify({
       webhooksUri: webhookUrl,
-      messagesAndStatuses: true,
+      subscriptions: {
+        messagesAndStatuses: true,
+        contactsAndDealsCreation: false,
+        channelsUpdates: false,
+        wabaTemplatesStatus: false,
+      },
     }),
   });
 
