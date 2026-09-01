@@ -1,5 +1,5 @@
 import { isMaxConfigured, pollMaxUpdates } from "@/lib/integrations/max";
-import { shouldUseMaxBotIncoming } from "@/lib/integrations/wazzup-max";
+import { shouldMaxUsePolling, shouldUseMaxBotIncoming } from "@/lib/integrations/wazzup-max";
 import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
 import { syncRecentMaxMessages } from "@/lib/integrations/max-sync-recent";
 
@@ -32,7 +32,7 @@ export function startMaxPollingListener(): void {
     listenerStarted ||
     !isMaxConfigured() ||
     !shouldUseMaxBotIncoming() ||
-    process.env.WEBHOOK_BASE_URL
+    !shouldMaxUsePolling()
   ) {
     return;
   }

@@ -33,6 +33,37 @@ export interface WazzupMaxWebhookMessage {
 
 const MAX_CHAT_TYPES = new Set(["max", "maxbot", "maxgroup"]);
 
+function normalizeBaseUrl(base: string | undefined): string | null {
+  const trimmed = base?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/$/, "");
+}
+
+/** MAX platform accepts only HTTPS webhook URLs (no raw IP:port). */
+export function getMaxWebhookBaseUrl(): string | null {
+  const base = normalizeBaseUrl(process.env.WEBHOOK_BASE_URL);
+  if (!base) return null;
+  try {
+    const url = new URL(base);
+    if (url.protocol !== "https:") return null;
+    return base;
+  } catch {
+    return null;
+  }
+}
+
+/** Wazzup can use HTTP/IP; dedicated env avoids blocking MAX polling. */
+export function getWazzupWebhookBaseUrl(): string | null {
+  return (
+    normalizeBaseUrl(process.env.WAZZUP_WEBHOOK_BASE_URL) ??
+    normalizeBaseUrl(process.env.WEBHOOK_BASE_URL)
+  );
+}
+
+export function shouldMaxUsePolling(): boolean {
+  return !getMaxWebhookBaseUrl();
+}
+
 export function getMaxIncomingMode(): MaxIncomingMode {
   return process.env.MAX_INCOMING?.toLowerCase() === "wazzup" ? "wazzup" : "bot";
 }

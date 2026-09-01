@@ -16,7 +16,7 @@ import {
   sendTelegramMessage,
   type TelegramUpdate,
 } from "./telegram";
-import { getMaxIncomingMode, getWazzupMaxStatus } from "./wazzup-max";
+import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, shouldMaxUsePolling } from "./wazzup-max";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -79,6 +79,8 @@ export function parseMaxWebhookBody(
 
 export async function getIntegrationStatus() {
   const webhookBase = process.env.WEBHOOK_BASE_URL;
+  const maxWebhookBase = getMaxWebhookBaseUrl();
+  const wazzupWebhookBase = getWazzupWebhookBaseUrl();
   const telegram = await getTelegramStatus();
   const maxConfigured = isMaxConfigured();
   const maxInfo = maxConfigured ? await getMaxBotInfo() : null;
@@ -104,12 +106,12 @@ export async function getIntegrationStatus() {
       incomingMode: maxIncoming,
       mode:
         maxIncoming === "wazzup"
-          ? webhookBase
-            ? "hybrid"
-            : "polling"
-          : webhookBase
-            ? "webhook"
-            : "polling",
+          ? shouldMaxUsePolling()
+            ? "hybrid-polling"
+            : "hybrid"
+          : shouldMaxUsePolling()
+            ? "polling"
+            : "webhook",
       profile: maxInfo?.bot ?? null,
       error: maxInfo?.ok === false ? maxInfo.error : null,
       webhooks: maxSubs?.subscriptions ?? [],
@@ -126,6 +128,8 @@ export async function getIntegrationStatus() {
         : null,
     },
     webhookBaseUrl: webhookBase ?? null,
+    maxWebhookBaseUrl: maxWebhookBase,
+    wazzupWebhookBaseUrl: wazzupWebhookBase,
     assignmentStrategy:
       process.env.ASSIGNMENT_STRATEGY === "round_robin"
         ? "round_robin"

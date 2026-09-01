@@ -24,7 +24,7 @@ interface MaxStatus {
   configured: boolean;
   connected: boolean;
   incomingMode?: "bot" | "wazzup";
-  mode: "webhook" | "polling" | "hybrid";
+  mode: "webhook" | "polling" | "hybrid" | "hybrid-polling";
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
@@ -181,8 +181,10 @@ export function MaxConnectPanel() {
             <p className="mt-1 text-xs text-muted-foreground">
               Режим входящих:{" "}
               {status.incomingMode === "wazzup"
-                ? status.mode === "hybrid"
-                  ? "Bot API + Wazzup (голосовые)"
+                ? status.mode === "hybrid" || status.mode === "hybrid-polling"
+                  ? status.mode === "hybrid-polling"
+                    ? "Bot API polling + Wazzup (голосовые)"
+                    : "Bot API webhook + Wazzup (голосовые)"
                   : "Bot API polling + Wazzup"
                 : status.mode === "webhook"
                   ? "Bot API webhook"
@@ -222,7 +224,7 @@ export function MaxConnectPanel() {
             <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-xs">
               MAX_INCOMING=wazzup{"\n"}
               WAZZUP_API_KEY=ваш_ключ{"\n"}
-              WEBHOOK_BASE_URL=https://ваш-домен.ru
+              WAZZUP_WEBHOOK_BASE_URL=http://IP:3000
             </pre>
             <p className="mt-2 text-xs text-sky-900 dark:text-sky-200">
               Текст и медиа приходят через <strong>Bot API</strong>, голосовые —

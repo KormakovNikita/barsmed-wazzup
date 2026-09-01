@@ -59,7 +59,7 @@ export async function register() {
 
     if (isMaxConfigured()) {
       const { mergeDuplicateMaxConversations } = await import("@/lib/store");
-      const { getMaxIncomingMode } = await import(
+      const { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupWebhookBaseUrl } = await import(
         "@/lib/integrations/wazzup-max"
       );
       const merged = mergeDuplicateMaxConversations();
@@ -68,10 +68,11 @@ export async function register() {
       }
 
       const maxIncoming = getMaxIncomingMode();
-      const webhookBase = process.env.WEBHOOK_BASE_URL;
+      const maxWebhookBase = getMaxWebhookBaseUrl();
+      const wazzupWebhookBase = getWazzupWebhookBaseUrl();
 
-      if (maxIncoming === "wazzup" && process.env.WAZZUP_API_KEY && webhookBase) {
-        registerWazzupWebhook(`${webhookBase}/api/webhooks/wazzup`).catch(
+      if (maxIncoming === "wazzup" && process.env.WAZZUP_API_KEY && wazzupWebhookBase) {
+        registerWazzupWebhook(`${wazzupWebhookBase}/api/webhooks/wazzup`).catch(
           (error) => {
             console.error(
               "[instrumentation] Wazzup webhook for MAX voice failed:",
@@ -81,8 +82,8 @@ export async function register() {
         );
       }
 
-      if (webhookBase) {
-        registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {
+      if (maxWebhookBase) {
+        registerMaxWebhook(`${maxWebhookBase}/api/webhooks/max`).catch((error) => {
           console.error("[instrumentation] MAX webhook registration failed:", error);
         });
       } else {

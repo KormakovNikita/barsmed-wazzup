@@ -13,7 +13,7 @@ import {
   registerWazzupWebhook,
   setTelegramWebhook,
 } from "@/lib/integrations/telegram";
-import { getMaxIncomingMode } from "@/lib/integrations/wazzup-max";
+import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupWebhookBaseUrl } from "@/lib/integrations/wazzup-max";
 import { getAssignmentStrategy, getOperatorLoad } from "@/lib/assignment";
 import { listConversations, listOperators } from "@/lib/store";
 
@@ -33,6 +33,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = (await request.json()) as { action?: string; url?: string };
   const baseUrl = process.env.WEBHOOK_BASE_URL;
+  const maxWebhookBase = getMaxWebhookBaseUrl();
+  const wazzupWebhookBase = getWazzupWebhookBaseUrl();
 
   if (body.action === "list-max-subscriptions") {
     const result = await listMaxSubscriptions();
@@ -68,18 +70,18 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "register-wazzup-webhook") {
-    if (!baseUrl) {
+    if (!wazzupWebhookBase) {
       return NextResponse.json(
-        { error: "WEBHOOK_BASE_URL не задан — нужен HTTPS-домен" },
+        { error: "WAZZUP_WEBHOOK_BASE_URL или WEBHOOK_BASE_URL не задан" },
         { status: 400 },
       );
     }
-    const result = await registerWazzupWebhook(`${baseUrl}/api/webhooks/wazzup`);
+    const result = await registerWazzupWebhook(`${wazzupWebhookBase}/api/webhooks/wazzup`);
     return NextResponse.json(result);
   }
 
   if (body.action === "register-webhooks") {
-    if (!baseUrl) {
+    if (!baseUrl && !maxWebhookBase && !wazzupWebhookBase) {
       return NextResponse.json(
         { error: "WEBHOOK_BASE_URL не задан" },
         { status: 400 },
@@ -88,25 +90,29 @@ export async function POST(request: Request) {
 
     const results: Record<string, { ok: boolean; error?: string }> = {};
 
-    if (getTelegramMode() === "bot" && isTelegramConfigured()) {
+    if (getTelegramMode() === "bot" && isTelegramConfigured() && baseUrl) {
       results.telegram = await setTelegramWebhook(
         `${baseUrl}/api/webhooks/telegram`,
       );
     }
 
-    if (getTelegramMode() === "wazzup") {
+    if (getTelegramMode() === "wazzup" && wazzupWebhookBase) {
       results.wazzup = await registerWazzupWebhook(
-        `${baseUrl}/api/webhooks/wazzup`,
+        `${wazzupWebhookBase}/api/webhooks/wazzup`,
       );
     }
 
     if (isMaxConfigured()) {
-      if (getMaxIncomingMode() === "wazzup" && process.env.WAZZUP_API_KEY) {
+      if (getMaxIncomingMode() === "wazzup" && process.env.WAZZUP_API_KEY && wazzupWebhookBase) {
         results.wazzupMax = await registerWazzupWebhook(
-          `${baseUrl}/api/webhooks/wazzup`,
+          `${wazzupWebhookBase}/api/webhooks/wazzup`,
         );
       }
-      results.max = await registerMaxWebhook(`${baseUrl}/api/webhooks/max`);
+      if (maxWebhookBase) {
+        results.max = await registerMaxWebhook(`${maxWebhookBase}/api/webhooks/max`);
+      } else {
+        results.max = { ok: true };
+      }
     }
 
     return NextResponse.json({ ok: true, results });
