@@ -1,5 +1,9 @@
 import type { OutboundMessagePayload } from "@/lib/types";
 import { maxAttachmentPreview } from "./max-media";
+import {
+  buildMaxOutboundAttachments,
+  sendMaxMessageWithRetry,
+} from "./max-upload";
 
 const DEFAULT_MAX_API = "https://platform-api2.max.ru";
 
@@ -42,7 +46,26 @@ export async function sendMaxMessage(
     params.set("user_id", payload.externalThreadId);
   }
 
-  const body: Record<string, unknown> = { text: payload.content };
+  const body: Record<string, unknown> = {};
+  if (payload.content.trim()) {
+    body.text = payload.content;
+  }
+
+  if (payload.attachments?.length) {
+    const built = await buildMaxOutboundAttachments(payload.attachments);
+    if ("error" in built) {
+      return { ok: false, error: built.error };
+    }
+    body.attachments = built.attachments;
+    if (!body.text) {
+      body.text = payload.content.trim() || null;
+    }
+  }
+
+  if (!body.text && !body.attachments) {
+    return { ok: false, error: "Пустое сообщение" };
+  }
+
   if (payload.replyToChannelMessageId) {
     body.link = {
       type: "reply",
@@ -50,13 +73,10 @@ export async function sendMaxMessage(
     };
   }
 
-  const response = await fetch(
+  const response = await sendMaxMessageWithRetry(
     `${getMaxApiBase()}/messages?${params.toString()}`,
-    {
-      method: "POST",
-      headers: maxHeaders(),
-      body: JSON.stringify(body),
-    },
+    body,
+    maxHeaders(),
   );
 
   if (!response.ok) {

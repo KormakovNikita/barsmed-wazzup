@@ -1,5 +1,6 @@
 import { isMaxConfigured, pollMaxUpdates } from "@/lib/integrations/max";
 import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
+import { syncRecentMaxMessages } from "@/lib/integrations/max-sync-recent";
 
 let marker: number | undefined;
 let listenerStarted = false;
@@ -16,6 +17,10 @@ export async function drainMaxUpdates(): Promise<
   for (const update of updates) {
     const event = await processMaxIncomingUpdate(update);
     if (event) events.push(event);
+  }
+
+  if (updates.length === 0) {
+    await syncRecentMaxMessages();
   }
 
   return events;

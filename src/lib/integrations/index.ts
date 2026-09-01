@@ -24,9 +24,6 @@ export async function dispatchOutboundMessage(
     case "telegram":
       return sendTelegramMessage(payload);
     case "max":
-      if (payload.attachments?.length) {
-        return { ok: false, error: "MAX пока поддерживает только текст" };
-      }
       return sendMaxMessage(payload);
     default:
       return { ok: true };
