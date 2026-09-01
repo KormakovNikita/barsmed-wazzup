@@ -190,6 +190,23 @@ export function MaxConnectPanel() {
               "Загрузить историю переписок MAX"
             )}
           </Button>
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <p className="font-medium text-amber-900 dark:text-amber-100">
+              Голосовые сообщения MAX (удержание кнопки записи)
+            </p>
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+              Через Bot API они <strong>не передаются ботам</strong> — MAX не
+              отдаёт их ни в webhook, ни в истории сообщений. HubDesk получает
+              текст, фото, видео и файлы, но не нативные голосовые. Это
+              ограничение платформы, не ошибка интеграции.
+            </p>
+            <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
+              Варианты: попросить клиента отправить аудио как{" "}
+              <strong>файл</strong> (не голосовое); или подключить{" "}
+              <strong>MAX через Wazzup</strong> (живой аккаунт, не бот) — там
+              голосовые приходят как MP3.
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground">
             Загружает историю из MAX API для всех известных диалогов. Чтобы
             подтянуть <strong>всех</strong> клиентов, которые писали раньше
