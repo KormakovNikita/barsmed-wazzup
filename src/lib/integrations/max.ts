@@ -347,13 +347,33 @@ export function parseMaxUpdate(update: MaxUpdate) {
       return false;
     }) ?? [];
   const text = body.text?.trim() ?? "";
-
-  if (!text && mediaAttachments.length === 0) {
-    return null;
-  }
-
   const sender = update.message.sender;
   if (!sender) return null;
+
+  if (!text && mediaAttachments.length === 0) {
+    if (sender.is_bot) return null;
+    const name = [sender.first_name, sender.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const recipient = update.message.recipient;
+    const chatId = recipient?.chat_id;
+    const userId = String(sender.user_id);
+    const threadId = chatId ? String(chatId) : userId;
+    const mid = body.mid;
+    return {
+      externalThreadId: threadId,
+      maxChatId: chatId ? String(chatId) : undefined,
+      maxUserId: userId,
+      externalMessageId: mid ? `max-${mid}` : `max-empty-${update.timestamp}`,
+      channelMessageId: mid,
+      content: "🎤 Голосовое сообщение",
+      senderName: name || sender.username || "MAX user",
+      senderUsername: sender.username,
+      replyToChannelMessageId: getMaxReplyToMessageId(update.message?.link),
+      direction: "in" as const,
+    };
+  }
 
   const recipient = update.message.recipient;
   const chatId = recipient?.chat_id;

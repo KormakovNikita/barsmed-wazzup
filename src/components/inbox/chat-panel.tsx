@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
 import { EmojiPicker } from "@/components/inbox/emoji-picker";
+import { TemplatePicker } from "@/components/inbox/template-picker";
 import type { ConversationDetail, Message, MessageAttachment } from "@/lib/types";
 import {
   formatMessageDateLabel,
@@ -303,23 +304,41 @@ export function ChatPanel({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function insertEmoji(emoji: string) {
+  function insertText(text: string) {
     const textarea = textareaRef.current;
     if (!textarea) {
-      setDraft((prev) => prev + emoji);
+      setDraft(text);
       return;
     }
 
     const start = textarea.selectionStart ?? draft.length;
     const end = textarea.selectionEnd ?? draft.length;
-    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    const next = draft.slice(0, start) + text + draft.slice(end);
     setDraft(next);
 
     requestAnimationFrame(() => {
       textarea.focus();
-      const cursor = start + emoji.length;
-      textarea.setSelectionRange(cursor, cursor);
+      const caret = start + text.length;
+      textarea.setSelectionRange(caret, caret);
     });
+  }
+
+  function insertEmoji(emoji: string) {
+    insertText(emoji);
+  }
+
+  async function sendTemplateText(text: string) {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      await onSendMessage(text, undefined, replyToMessage?.id);
+      setDraft("");
+      setSelectedFile(null);
+      setReplyToMessage(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setSending(false);
+    }
   }
 
   if (loading) {
@@ -604,6 +623,12 @@ export function ChatPanel({
             <Paperclip className="h-4 w-4" />
           </Button>
           <EmojiPicker onSelect={insertEmoji} disabled={sending} />
+          <TemplatePicker
+            disabled={sending}
+            contactName={conversation.contact.name}
+            onInsert={insertText}
+            onSend={sendTemplateText}
+          />
           <Textarea
             ref={textareaRef}
             placeholder={

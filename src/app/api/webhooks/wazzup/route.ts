@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseWazzupTelegramMessage } from "@/lib/integrations/wazzup-telegram";
-import { parseWazzupMaxMessage } from "@/lib/integrations/wazzup-max";
+import { parseWazzupMaxMessage, isWazzupMaxMessage, shouldWazzupHandleMaxMessage } from "@/lib/integrations/wazzup-max";
 import { processIncomingMessage } from "@/lib/store";
 
 interface WazzupWebhookMessage {
@@ -37,6 +37,16 @@ export async function POST(request: Request) {
   const processed: { conversationId: string; created: boolean }[] = [];
 
   for (const msg of body.messages ?? []) {
+    if (isWazzupMaxMessage(msg)) {
+      console.info(
+        "[wazzup-webhook] max",
+        msg.type ?? "text",
+        msg.isEcho ? "echo" : "in",
+        msg.contentUri ? "media" : "text",
+        shouldWazzupHandleMaxMessage(msg) ? "accept" : "skip",
+      );
+    }
+
     const maxPayload = await parseWazzupMaxMessage(msg);
     const payload = maxPayload ?? parseWazzupTelegramMessage(msg);
     if (!payload) continue;

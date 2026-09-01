@@ -80,9 +80,9 @@ export function shouldUseMaxBotIncoming(): boolean {
 export function isWazzupMaxVoiceMessage(msg: WazzupMaxWebhookMessage): boolean {
   if (msg.isEcho) return false;
   const msgType = (msg.type ?? "text").toLowerCase();
-  if (msgType === "audio") return true;
-  const uri = (msg.contentUri ?? "").toLowerCase();
-  return /\.(ogg|opus|oga|was|mp3|wav|m4a|aac)(?:\?|$)/.test(uri);
+  if (["audio", "voice", "ptt"].includes(msgType)) return true;
+  if (isAudioContentUri(msg.contentUri)) return true;
+  return false;
 }
 
 export function shouldWazzupHandleMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
@@ -95,17 +95,23 @@ export function isWazzupMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
   return MAX_CHAT_TYPES.has(msg.chatType?.toLowerCase() ?? "");
 }
 
+function isAudioContentUri(contentUri?: string): boolean {
+  const uri = (contentUri ?? "").toLowerCase();
+  return /\.(ogg|opus|oga|was|mp3|wav|m4a|aac)(?:\?|$)/.test(uri);
+}
+
 function mapWazzupMediaType(type: string, contentUri?: string): MessageMediaType {
+  if (isAudioContentUri(contentUri)) {
+    const uri = (contentUri ?? "").toLowerCase();
+    if (/\.(ogg|opus|oga|was)(?:\?|$)/.test(uri)) return "voice";
+    return "audio";
+  }
+
   const lower = type.toLowerCase();
   if (lower === "image") return "image";
   if (lower === "video") return "video";
-  if (lower === "audio") return "voice";
-  if (lower === "document" || lower === "file") {
-    const uri = (contentUri ?? "").toLowerCase();
-    if (/\.(ogg|opus|oga|was)(?:\?|$)/.test(uri)) return "voice";
-    if (/\.(mp3|wav|m4a|aac)(?:\?|$)/.test(uri)) return "audio";
-    return "document";
-  }
+  if (lower === "audio" || lower === "voice" || lower === "ptt") return "voice";
+  if (lower === "document" || lower === "file") return "document";
   return "document";
 }
 
@@ -155,7 +161,12 @@ async function downloadWazzupContent(
   type: string,
 ): Promise<IncomingAttachmentPayload | null> {
   try {
-    const response = await fetch(contentUri, { cache: "no-store" });
+    const headers: HeadersInit = {};
+    if (process.env.WAZZUP_API_KEY) {
+      headers.Authorization = `Bearer ${process.env.WAZZUP_API_KEY}`;
+    }
+
+    const response = await fetch(contentUri, { cache: "no-store", headers });
     if (!response.ok) {
       console.error(
         `[wazzup-max] download failed ${response.status}:`,
@@ -201,9 +212,27 @@ export async function parseWazzupMaxMessage(
     (isOutbound ? "БАРСМЕД" : "Клиент MAX");
 
   let attachments: IncomingAttachmentPayload[] | undefined;
-  if (msg.contentUri && ["image", "audio", "video", "document", "file"].includes(msgType)) {
-    const downloaded = await downloadWazzupContent(msg.contentUri, msgType);
-    attachments = downloaded ? [downloaded] : undefined;
+  if (msg.contentUri) {
+    const effectiveType = isAudioContentUri(msg.contentUri)
+      ? "audio"
+      : msgType;
+    const canDownload =
+      ["image", "audio", "video", "document", "file", "voice", "ptt"].includes(
+        effectiveType,
+      ) || isAudioContentUri(msg.contentUri);
+
+    if (canDownload) {
+      const downloaded = await downloadWazzupContent(msg.contentUri, effectiveType);
+      attachments = downloaded ? [downloaded] : undefined;
+      if (!attachments?.length) {
+        console.warn(
+          "[wazzup-max] media download failed:",
+          msg.messageId,
+          effectiveType,
+          msg.contentUri.slice(0, 120),
+        );
+      }
+    }
   }
 
   const text = msg.text?.trim() ?? "";
