@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileText, Loader2, Plus, Send, Settings2 } from "lucide-react";
+import { FileText, Loader2, Plus, Send, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,7 @@ export function TemplatePicker({
   const [newTitle, setNewTitle] = useState("");
   const [newBody, setNewBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -66,8 +67,8 @@ export function TemplatePicker({
   }, []);
 
   useEffect(() => {
-    if (open) loadTemplates();
-  }, [open, loadTemplates]);
+    if (open || manageOpen) loadTemplates();
+  }, [open, manageOpen, loadTemplates]);
 
   const placeholders = useMemo(
     () => (selected ? extractTemplatePlaceholders(selected.body) : []),
@@ -117,6 +118,22 @@ export function TemplatePicker({
       closeFillDialog();
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleDeleteTemplate(id: string, title: string) {
+    if (!window.confirm(`Удалить шаблон «${title}»?`)) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Ошибка удаления");
+      }
+      if (selected?.id === id) closeFillDialog();
+      await loadTemplates();
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -176,7 +193,7 @@ export function TemplatePicker({
               }}
             >
               <Settings2 className="h-3.5 w-3.5" />
-              Добавить
+              Управление
             </Button>
           </div>
           {loading ? (
@@ -191,17 +208,39 @@ export function TemplatePicker({
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {templates.map((template) => (
-                <button
+                <div
                   key={template.id}
-                  type="button"
-                  className="w-full rounded-md px-2 py-2 text-left hover:bg-accent"
-                  onClick={() => openTemplate(template)}
+                  className="flex items-start gap-1 rounded-md hover:bg-accent"
                 >
-                  <p className="text-sm font-medium">{template.title}</p>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">
-                    {templatePreviewLabel(template.title, template.body)}
-                  </p>
-                </button>
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 px-2 py-2 text-left"
+                    onClick={() => openTemplate(template)}
+                  >
+                    <p className="text-sm font-medium">{template.title}</p>
+                    <p className="line-clamp-2 text-xs text-muted-foreground">
+                      {templatePreviewLabel(template.title, template.body)}
+                    </p>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="mt-1 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    disabled={deletingId === template.id}
+                    title="Удалить шаблон"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteTemplate(template.id, template.title);
+                    }}
+                  >
+                    {deletingId === template.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
               ))}
             </div>
           )}
@@ -278,33 +317,73 @@ export function TemplatePicker({
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Новый шаблон</DialogTitle>
+            <DialogTitle>Управление шаблонами</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Используйте поля в фигурных скобках, например{" "}
-              <code className="text-xs">{"{имя}"}</code>,{" "}
-              <code className="text-xs">{"{дата}"}</code>,{" "}
-              <code className="text-xs">{"{время}"}</code>.
-            </p>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-template-title">Название</Label>
-              <Input
-                id="new-template-title"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Подтверждение записи"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-template-body">Текст</Label>
-              <Textarea
-                id="new-template-body"
-                value={newBody}
-                onChange={(e) => setNewBody(e.target.value)}
-                rows={5}
-                placeholder="Добрый день, {имя}! Запись на {дата} в {время} подтверждена."
-              />
+          <div className="space-y-4">
+            {templates.length > 0 && (
+              <div className="space-y-2">
+                <Label>Текущие шаблоны</Label>
+                <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-1">
+                  {templates.map((template) => (
+                    <div
+                      key={template.id}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{template.title}</p>
+                        <p className="line-clamp-1 text-xs text-muted-foreground">
+                          {templatePreviewLabel(template.title, template.body)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        disabled={deletingId === template.id}
+                        title="Удалить"
+                        onClick={() =>
+                          void handleDeleteTemplate(template.id, template.title)
+                        }
+                      >
+                        {deletingId === template.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="space-y-3 border-t pt-4">
+              <Label>Новый шаблон</Label>
+              <p className="text-sm text-muted-foreground">
+                Используйте поля в фигурных скобках, например{" "}
+                <code className="text-xs">{"{имя}"}</code>,{" "}
+                <code className="text-xs">{"{дата}"}</code>,{" "}
+                <code className="text-xs">{"{время}"}</code>.
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-template-title">Название</Label>
+                <Input
+                  id="new-template-title"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Подтверждение записи"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-template-body">Текст</Label>
+                <Textarea
+                  id="new-template-body"
+                  value={newBody}
+                  onChange={(e) => setNewBody(e.target.value)}
+                  rows={5}
+                  placeholder="Добрый день, {имя}! Запись на {дата} в {время} подтверждена."
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
