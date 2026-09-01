@@ -55,6 +55,7 @@ type MessageRow = {
   status: Message["status"];
   operator_id: string | null;
   external_id: string | null;
+  reply_to_message_id: string | null;
   created_at: string;
 };
 
@@ -206,9 +207,58 @@ function rowToMessage(row: MessageRow, attachments?: MessageAttachment[]): Messa
     status: row.status,
     operatorId: row.operator_id ?? undefined,
     externalId: row.external_id ?? undefined,
+    replyToMessageId: row.reply_to_message_id ?? undefined,
     createdAt: row.created_at,
     attachments,
   };
+}
+
+function enrichMessagesWithReplies(messages: Message[]): Message[] {
+  const byId = new Map(messages.map((message) => [message.id, message]));
+  return messages.map((message) => {
+    if (!message.replyToMessageId) return message;
+    const parent = byId.get(message.replyToMessageId);
+    if (!parent) return message;
+    return {
+      ...message,
+      replyTo: {
+        messageId: parent.id,
+        content: messagePreviewText(parent.content, parent.attachments),
+        direction: parent.direction,
+      },
+    };
+  });
+}
+
+function findMessageIdByChannelMessageId(
+  conversationId: string,
+  channelMessageId: string,
+): string | undefined {
+  const row = getDb()
+    .prepare(
+      `SELECT id FROM messages
+       WHERE conversation_id = ?
+         AND (external_id = ? OR external_id LIKE ?)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .get(
+      conversationId,
+      channelMessageId,
+      `tg-user-${channelMessageId}-%`,
+    ) as { id: string } | undefined;
+  return row?.id;
+}
+
+function resolveReplyToChannelMessageId(
+  replyToMessageId: string | undefined,
+): string | undefined {
+  if (!replyToMessageId) return undefined;
+  const row = getDb()
+    .prepare("SELECT external_id FROM messages WHERE id = ?")
+    .get(replyToMessageId) as { external_id: string | null } | undefined;
+  if (!row?.external_id) return undefined;
+  return row.external_id.match(/^tg-user-(\d+)-/)?.[1] ?? row.external_id;
 }
 
 function upsertContact(contact: Contact): void {
@@ -275,9 +325,9 @@ function insertMessage(message: Message): void {
   getDb()
     .prepare(
       `INSERT OR IGNORE INTO messages (
-         id, conversation_id, content, direction, status, operator_id, external_id, created_at
+         id, conversation_id, content, direction, status, operator_id, external_id, reply_to_message_id, created_at
        ) VALUES (
-         @id, @conversationId, @content, @direction, @status, @operatorId, @externalId, @createdAt
+         @id, @conversationId, @content, @direction, @status, @operatorId, @externalId, @replyToMessageId, @createdAt
        )`,
     )
     .run({
@@ -288,6 +338,7 @@ function insertMessage(message: Message): void {
       status: message.status,
       operatorId: message.operatorId ?? null,
       externalId: message.externalId ?? null,
+      replyToMessageId: message.replyToMessageId ?? null,
       createdAt: message.createdAt,
     });
 }
@@ -554,13 +605,14 @@ export function getConversationDetail(id: string): ConversationDetail | null {
     .all(id) as MessageRow[];
 
   const attachmentMap = loadAttachmentsForMessages(messageRows.map((row) => row.id));
+  const messages = enrichMessagesWithReplies(
+    messageRows.map((row) => rowToMessage(row, attachmentMap.get(row.id))),
+  );
 
   return {
     ...conversation,
     contact,
-    messages: messageRows.map((row) =>
-      rowToMessage(row, attachmentMap.get(row.id)),
-    ),
+    messages,
     assignedOperator: conversation.assignedTo
       ? getOperator(conversation.assignedTo)
       : undefined,
@@ -743,6 +795,12 @@ export function processIncomingMessage(
       (payload.externalMessageId.replace(/^max-/, "").startsWith("mid.")
         ? payload.externalMessageId.replace(/^max-/, "")
         : payload.externalMessageId),
+    replyToMessageId: payload.replyToChannelMessageId
+      ? findMessageIdByChannelMessageId(
+          conversation!.id,
+          payload.replyToChannelMessageId,
+        )
+      : undefined,
     createdAt: new Date().toISOString(),
   };
 
@@ -965,6 +1023,7 @@ export async function sendMessage(
   content: string,
   operatorId?: string,
   attachments?: OutboundAttachmentPayload[],
+  replyToMessageId?: string,
 ): Promise<{ message: Message | null; error?: string }> {
   const row = getDb()
     .prepare("SELECT * FROM conversations WHERE id = ?")
@@ -976,6 +1035,7 @@ export async function sendMessage(
 
   const conversation = rowToConversation(row);
   const senderId = operatorId ?? conversation.assignedTo ?? "op-1";
+  const replyToChannelMessageId = resolveReplyToChannelMessageId(replyToMessageId);
 
   const message: Message = {
     id: `m-${Date.now()}`,
@@ -984,6 +1044,7 @@ export async function sendMessage(
     direction: "out",
     status: "sent",
     operatorId: senderId,
+    replyToMessageId,
     createdAt: new Date().toISOString(),
   };
 
@@ -1009,6 +1070,7 @@ export async function sendMessage(
       externalThreadId: conversation.externalThreadId,
       content: trimmed,
       attachments,
+      replyToChannelMessageId,
     });
 
     message.status = result.ok ? "delivered" : "failed";

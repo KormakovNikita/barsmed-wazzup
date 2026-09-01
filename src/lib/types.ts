@@ -59,6 +59,12 @@ export interface MessageAttachment {
   height?: number;
 }
 
+export interface MessageReplyPreview {
+  messageId: string;
+  content: string;
+  direction: MessageDirection;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -68,6 +74,8 @@ export interface Message {
   createdAt: string;
   operatorId?: string;
   externalId?: string;
+  replyToMessageId?: string;
+  replyTo?: MessageReplyPreview;
   attachments?: MessageAttachment[];
 }
 
@@ -115,6 +123,8 @@ export interface IncomingMessagePayload {
   senderUsername?: string;
   /** Channel-native message id for delete/edit APIs */
   channelMessageId?: string;
+  /** Channel-native id of the message being replied to */
+  replyToChannelMessageId?: string;
   attachments?: IncomingAttachmentPayload[];
   /** MAX: dialog chat_id (preferred thread key) */
   maxChatId?: string;
@@ -129,4 +139,5 @@ export interface OutboundMessagePayload {
   externalThreadId: string;
   content: string;
   attachments?: OutboundAttachmentPayload[];
+  replyToChannelMessageId?: string;
 }

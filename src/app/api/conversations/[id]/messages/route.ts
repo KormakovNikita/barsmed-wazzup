@@ -17,6 +17,7 @@ export async function POST(
     const form = await request.formData();
     const content = String(form.get("content") ?? "");
     const operatorId = form.get("operatorId")?.toString();
+    const replyToMessageId = form.get("replyToMessageId")?.toString();
     const file = form.get("file");
 
     if (!(file instanceof File)) {
@@ -42,6 +43,7 @@ export async function POST(
       content,
       operatorId,
       attachments,
+      replyToMessageId,
     );
 
     if (!message) {
@@ -54,9 +56,10 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { content, operatorId } = body as {
+  const { content, operatorId, replyToMessageId } = body as {
     content?: string;
     operatorId?: string;
+    replyToMessageId?: string;
   };
 
   if (!content?.trim()) {
@@ -66,7 +69,13 @@ export async function POST(
     );
   }
 
-  const { message, error } = await sendMessage(id, content, operatorId);
+  const { message, error } = await sendMessage(
+    id,
+    content,
+    operatorId,
+    undefined,
+    replyToMessageId,
+  );
 
   if (!message) {
     return NextResponse.json({ error: "Диалог не найден" }, { status: 404 });

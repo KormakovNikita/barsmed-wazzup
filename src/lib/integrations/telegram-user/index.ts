@@ -114,6 +114,7 @@ export async function sendTelegramUserMessage(
   externalThreadId: string,
   content: string,
   attachments?: import("@/lib/types").OutboundAttachmentPayload[],
+  replyToChannelMessageId?: string,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   try {
     const c = await getTelegramUserClient();
@@ -122,6 +123,10 @@ export async function sendTelegramUserMessage(
     }
 
     const entity = await c.getEntity(externalThreadId);
+    const replyTo = replyToChannelMessageId &&
+      Number.isFinite(Number(replyToChannelMessageId))
+      ? Number(replyToChannelMessageId)
+      : undefined;
 
     if (attachments?.length) {
       const attachment = attachments[0];
@@ -136,6 +141,7 @@ export async function sendTelegramUserMessage(
           attachment.type === "audio" ||
           attachment.type === "voice",
         voiceNote: attachment.type === "voice",
+        replyTo,
       });
 
       return { ok: true, externalId: String(result.id) };
@@ -145,7 +151,10 @@ export async function sendTelegramUserMessage(
       return { ok: false, error: "Пустое сообщение" };
     }
 
-    const result = await c.sendMessage(entity, { message: content });
+    const result = await c.sendMessage(entity, {
+      message: content,
+      replyTo,
+    });
     return { ok: true, externalId: String(result.id) };
   } catch (error) {
     return {

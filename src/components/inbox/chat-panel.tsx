@@ -6,10 +6,12 @@ import { ru } from "date-fns/locale";
 import {
   Check,
   CheckCheck,
+  CornerUpLeft,
   MoreVertical,
   Paperclip,
   Send,
   Trash2,
+  X,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,10 +30,51 @@ import { cn } from "@/lib/utils";
 interface ChatPanelProps {
   conversation: ConversationDetail | null;
   loading: boolean;
-  onSendMessage: (content: string, file?: File) => Promise<void>;
+  onSendMessage: (
+    content: string,
+    file?: File,
+    replyToMessageId?: string,
+  ) => Promise<void>;
   onDeleteMessage: (messageId: string, revoke: boolean) => Promise<void>;
   onSimulateIncoming: () => Promise<void>;
   sendError?: string | null;
+}
+
+function ReplyQuote({
+  replyTo,
+  isOut,
+}: {
+  replyTo: NonNullable<Message["replyTo"]>;
+  isOut: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-2 border-l-2 pl-2 text-xs opacity-90",
+        isOut ? "border-primary-foreground/50" : "border-primary/50",
+      )}
+    >
+      <p className="font-medium">
+        {replyTo.direction === "out" ? "Вы" : "Клиент"}
+      </p>
+      <p className="line-clamp-2 whitespace-pre-wrap break-words">
+        {replyTo.content}
+      </p>
+    </div>
+  );
+}
+
+function messagePreview(msg: Message): string {
+  if (msg.content.trim()) return msg.content.trim();
+  if (msg.attachments?.length) {
+    const attachment = msg.attachments[0];
+    if (attachment.type === "image") return "📷 Фото";
+    if (attachment.type === "video") return "🎬 Видео";
+    if (attachment.type === "voice") return "🎤 Голосовое";
+    if (attachment.type === "audio") return "🎵 Аудио";
+    return attachment.fileName ? `📎 ${attachment.fileName}` : "📎 Файл";
+  }
+  return "Сообщение";
 }
 
 function MessageStatusIcon({ status }: { status: Message["status"] }) {
@@ -110,6 +153,7 @@ export function ChatPanel({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageCountRef = useRef(0);
@@ -133,6 +177,7 @@ export function ChatPanel({
       conversationIdRef.current = conversation?.id ?? null;
       messageCountRef.current = conversation?.messages.length ?? 0;
       setSelectedFile(null);
+      setReplyToMessage(null);
       requestAnimationFrame(() => scrollMessagesToBottom("auto"));
       return;
     }
@@ -148,9 +193,14 @@ export function ChatPanel({
     if ((!draft.trim() && !selectedFile) || sending) return;
     setSending(true);
     try {
-      await onSendMessage(draft, selectedFile ?? undefined);
+      await onSendMessage(
+        draft,
+        selectedFile ?? undefined,
+        replyToMessage?.id,
+      );
       setDraft("");
       setSelectedFile(null);
+      setReplyToMessage(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } finally {
       setSending(false);
@@ -188,7 +238,7 @@ export function ChatPanel({
     );
   }
 
-  const canDeleteInTelegram = conversation.channel === "telegram";
+  const canUseTelegramActions = conversation.channel === "telegram";
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -220,12 +270,19 @@ export function ChatPanel({
                 >
                   <div
                     className={cn(
-                      "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
+                      "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm transition-colors",
                       isOut
                         ? "rounded-br-md bg-primary text-primary-foreground"
                         : "rounded-bl-md bg-muted",
+                      canUseTelegramActions && "cursor-pointer hover:brightness-95",
                     )}
+                    onDoubleClick={() => {
+                      if (canUseTelegramActions) setReplyToMessage(msg);
+                    }}
                   >
+                    {msg.replyTo && (
+                      <ReplyQuote replyTo={msg.replyTo} isOut={isOut} />
+                    )}
                     {msg.attachments?.map((attachment) => (
                       <div key={attachment.id} className="mb-2 last:mb-0">
                         <AttachmentView attachment={attachment} isOut={isOut} />
@@ -249,7 +306,7 @@ export function ChatPanel({
                     </div>
                   </div>
 
-                  {canDeleteInTelegram && (
+                  {canUseTelegramActions && (
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -263,6 +320,10 @@ export function ChatPanel({
                         <MoreVertical className="h-4 w-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align={isOut ? "end" : "start"}>
+                        <DropdownMenuItem onClick={() => setReplyToMessage(msg)}>
+                          <CornerUpLeft className="mr-2 h-4 w-4" />
+                          Ответить
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => onDeleteMessage(msg.id, false)}
                         >
@@ -288,6 +349,28 @@ export function ChatPanel({
       <footer className="shrink-0 border-t p-3">
         {sendError && (
           <p className="mb-2 text-xs text-destructive">{sendError}</p>
+        )}
+        {replyToMessage && (
+          <div className="mb-2 flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+            <CornerUpLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-primary">
+                Ответ{" "}
+                {replyToMessage.direction === "out" ? "вам" : conversation.contact.name}
+              </p>
+              <p className="truncate text-muted-foreground">
+                {messagePreview(replyToMessage)}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={() => setReplyToMessage(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         )}
         {selectedFile && (
           <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
@@ -325,7 +408,11 @@ export function ChatPanel({
             <Paperclip className="h-4 w-4" />
           </Button>
           <Textarea
-            placeholder="Напишите сообщение..."
+            placeholder={
+              replyToMessage
+                ? "Напишите ответ..."
+                : "Напишите сообщение..."
+            }
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}

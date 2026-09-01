@@ -59,6 +59,7 @@ export async function sendTelegramMessage(
       payload.externalThreadId,
       payload.content,
       payload.attachments,
+      payload.replyToChannelMessageId,
     );
   }
   if (mode === "wazzup") {

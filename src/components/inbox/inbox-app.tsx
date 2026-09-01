@@ -162,7 +162,11 @@ export function InboxApp() {
     await fetchConversations();
   }
 
-  async function handleSendMessage(content: string, file?: File) {
+  async function handleSendMessage(
+    content: string,
+    file?: File,
+    replyToMessageId?: string,
+  ) {
     if (!selectedId) return;
     setSendError(null);
 
@@ -172,6 +176,9 @@ export function InboxApp() {
       form.append("content", content);
       if (conversationDetail?.assignedTo) {
         form.append("operatorId", conversationDetail.assignedTo);
+      }
+      if (replyToMessageId) {
+        form.append("replyToMessageId", replyToMessageId);
       }
       form.append("file", file);
       res = await fetch(`/api/conversations/${selectedId}/messages`, {
@@ -185,6 +192,7 @@ export function InboxApp() {
         body: JSON.stringify({
           content,
           operatorId: conversationDetail?.assignedTo,
+          replyToMessageId,
         }),
       });
     }

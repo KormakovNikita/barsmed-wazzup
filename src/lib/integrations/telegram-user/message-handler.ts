@@ -62,6 +62,24 @@ async function resolveSenderInfo(message: IncomingTelegramMessage): Promise<{
   return { name: "Telegram", skip: false };
 }
 
+function getReplyToChannelMessageId(
+  message: IncomingTelegramMessage,
+): string | undefined {
+  if ("replyToMsgId" in message && message.replyToMsgId != null) {
+    return String(message.replyToMsgId);
+  }
+  if (
+    "replyTo" in message &&
+    message.replyTo &&
+    typeof message.replyTo === "object" &&
+    "replyToMsgId" in message.replyTo &&
+    message.replyTo.replyToMsgId != null
+  ) {
+    return String(message.replyTo.replyToMsgId);
+  }
+  return undefined;
+}
+
 export async function processTelegramUserMessage(
   message: IncomingTelegramMessage,
 ): Promise<{ conversationId: string; created: boolean } | null> {
@@ -99,6 +117,7 @@ export async function processTelegramUserMessage(
     externalThreadId: threadId,
     externalMessageId: `tg-user-${messageId}-${messageDate}`,
     channelMessageId: String(messageId),
+    replyToChannelMessageId: getReplyToChannelMessageId(message),
     content: content || mediaPreviewLabel(attachments![0].type, attachments![0].fileName),
     senderName: name,
     senderUsername: username,

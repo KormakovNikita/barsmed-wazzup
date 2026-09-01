@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS messages (
   status TEXT NOT NULL,
   operator_id TEXT,
   external_id TEXT,
+  reply_to_message_id TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -103,8 +104,21 @@ export function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.exec(SCHEMA);
+    migrateSchema(db);
   }
   return db;
+}
+
+function migrateSchema(database: Database.Database): void {
+  const columns = database
+    .prepare("PRAGMA table_info(messages)")
+    .all() as { name: string }[];
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("reply_to_message_id")) {
+    database.exec(
+      "ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT",
+    );
+  }
 }
 
 export function isDatabaseEmpty(): boolean {
