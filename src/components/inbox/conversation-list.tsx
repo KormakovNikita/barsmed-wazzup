@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { formatDistanceToNow } from "date-fns";
-import { ru } from "date-fns/locale";
+import { formatConversationTime } from "@/lib/format-date";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -129,10 +128,7 @@ export function ConversationList({
                         {conv.contact?.name ?? "Неизвестный контакт"}
                       </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {formatDistanceToNow(new Date(conv.updatedAt), {
-                          addSuffix: false,
-                          locale: ru,
-                        })}
+                        {formatConversationTime(new Date(conv.updatedAt))}
                       </span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">

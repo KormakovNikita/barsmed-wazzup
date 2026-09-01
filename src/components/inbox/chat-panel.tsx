@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -25,6 +25,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
 import type { ConversationDetail, Message, MessageAttachment } from "@/lib/types";
+import {
+  formatMessageDateLabel,
+  formatMessageDayKey,
+} from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
@@ -261,11 +265,26 @@ export function ChatPanel({
       <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="space-y-3 px-4 py-4">
-            {conversation.messages.map((msg) => {
+            {conversation.messages.map((msg, index) => {
               const isOut = msg.direction === "out";
+              const msgDate = new Date(msg.createdAt);
+              const prevMsg =
+                index > 0 ? conversation.messages[index - 1] : null;
+              const showDateSeparator =
+                !prevMsg ||
+                formatMessageDayKey(msgDate) !==
+                  formatMessageDayKey(new Date(prevMsg.createdAt));
+
               return (
+                <Fragment key={msg.id}>
+                  {showDateSeparator && (
+                    <div className="flex justify-center py-1">
+                      <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                        {formatMessageDateLabel(msgDate)}
+                      </span>
+                    </div>
+                  )}
                 <div
-                  key={msg.id}
                   className={cn("group flex items-end gap-1", isOut ? "justify-end" : "justify-start")}
                 >
                   <div
@@ -340,6 +359,7 @@ export function ChatPanel({
                     </DropdownMenu>
                   )}
                 </div>
+                </Fragment>
               );
             })}
           </div>
