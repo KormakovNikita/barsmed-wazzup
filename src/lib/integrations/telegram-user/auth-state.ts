@@ -2,6 +2,7 @@ import { TelegramClient } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import type { ApiCredentials } from "teleproto/client/auth";
 import { getSetting } from "@/lib/settings-store";
+import { getTelegramClientOptions } from "./proxy";
 
 export interface PendingTelegramAuth {
   id: string;
@@ -31,7 +32,7 @@ export function createAuthClient(): TelegramClient {
   }
 
   return new TelegramClient(new StringSession(""), creds.apiId, creds.apiHash, {
-    connectionRetries: 5,
+    ...getTelegramClientOptions(),
   });
 }
 

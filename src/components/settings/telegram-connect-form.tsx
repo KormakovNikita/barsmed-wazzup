@@ -19,6 +19,7 @@ export function TelegramConnectForm() {
   const [error, setError] = useState<string | null>(null);
   const [apiId, setApiId] = useState("");
   const [apiHash, setApiHash] = useState("");
+  const [proxy, setProxy] = useState("");
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
   const [qrAuthId, setQrAuthId] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function TelegramConnectForm() {
       .then((res) => res.json())
       .then((data) => {
         if (data.apiId) setApiId(String(data.apiId));
+        if (data.proxyPreview) setProxy(data.proxyPreview);
         setCredentialsSaved(Boolean(data.configured));
       })
       .catch(() => {})
@@ -65,7 +67,7 @@ export function TelegramConnectForm() {
       const res = await fetch("/api/integrations/telegram/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiId, apiHash }),
+        body: JSON.stringify({ apiId, apiHash, proxy: proxy || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
@@ -236,6 +238,19 @@ export function TelegramConnectForm() {
                 onChange={(e) => setApiHash(e.target.value)}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="proxy">SOCKS5 прокси (для сервера в РФ)</Label>
+            <Input
+              id="proxy"
+              placeholder="socks5://user:pass@host:1080"
+              value={proxy}
+              onChange={(e) => setProxy(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Нужен, чтобы сервер HubDesk достучался до Telegram и показал QR.
+              На телефоне VPN не нужен.
+            </p>
           </div>
           <Button
             onClick={handleSaveCredentials}

@@ -11,6 +11,7 @@ import {
   storePendingAuth,
   type PendingTelegramAuth,
 } from "./auth-state";
+import { getTelegramClientOptions } from "./proxy";
 import {
   clearTelegramSession,
   hasTelegramSession,
@@ -55,7 +56,7 @@ export async function getTelegramUserClient(): Promise<TelegramClient | null> {
       new StringSession(sessionString),
       creds.apiId,
       creds.apiHash,
-      { connectionRetries: 5 },
+      getTelegramClientOptions(),
     );
 
     await client.connect();
