@@ -41,6 +41,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function extractUploadToken(
+  uploadType: MaxUploadType,
+  initData: { token?: string; url?: string },
+  uploadData: unknown,
+): string | undefined {
+  if (uploadData && typeof uploadData === "object") {
+    const payload = uploadData as {
+      token?: string;
+      photos?: Record<string, { token?: string }>;
+    };
+
+    if (payload.token) return payload.token;
+
+    if (payload.photos) {
+      const firstPhoto = Object.values(payload.photos).find(
+        (photo) => photo?.token,
+      );
+      if (firstPhoto?.token) return firstPhoto.token;
+    }
+  }
+
+  if (initData.token) return initData.token;
+
+  if (uploadType === "image" && initData.url) {
+    try {
+      const photoIds = new URL(initData.url).searchParams.get("photoIds");
+      if (photoIds && uploadData && typeof uploadData === "object") {
+        const photos = (uploadData as { photos?: Record<string, { token?: string }> })
+          .photos;
+        if (photos?.[photoIds]?.token) return photos[photoIds].token;
+      }
+    } catch {
+      // ignore URL parse errors
+    }
+  }
+
+  return undefined;
+}
+
 export async function uploadMaxAttachment(
   attachment: OutboundAttachmentPayload,
 ): Promise<{ token: string } | { error: string }> {
@@ -93,13 +132,14 @@ export async function uploadMaxAttachment(
     return { error: text || `MAX upload ${uploadResponse.status}` };
   }
 
-  let uploadToken = initData.token;
+  let uploadData: unknown = null;
   try {
-    const uploadData = (await uploadResponse.json()) as { token?: string };
-    uploadToken = uploadData.token ?? uploadToken;
+    uploadData = await uploadResponse.json();
   } catch {
-    // Some upload endpoints return empty body; token may come from init step.
+    uploadData = null;
   }
+
+  const uploadToken = extractUploadToken(uploadType, initData, uploadData);
 
   if (!uploadToken) {
     return { error: "MAX upload: не получен token вложения" };

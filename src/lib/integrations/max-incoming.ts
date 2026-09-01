@@ -27,10 +27,6 @@ export async function processMaxIncomingUpdate(
   }
   if (!content.trim()) return null;
 
-  const hasMediaOnly =
-    !parsed.content.trim() &&
-    Boolean(rawAttachments?.some((attachment) => attachment.type === "audio" || attachment.type === "voice"));
-
   const result = processIncomingMessage({
     channel: "max",
     externalThreadId: parsed.externalThreadId,
@@ -47,30 +43,6 @@ export async function processMaxIncomingUpdate(
     direction: parsed.direction,
     attachments: attachments.length ? attachments : undefined,
   });
-
-  if (!result && hasMediaOnly && rawAttachments?.length) {
-    const fallback = processIncomingMessage({
-      channel: "max",
-      externalThreadId: parsed.externalThreadId,
-      externalMessageId: parsed.externalMessageId,
-      channelMessageId:
-        parsed.channelMessageId ??
-        parsed.externalMessageId.replace(/^max-/, ""),
-      replyToChannelMessageId: parsed.replyToChannelMessageId,
-      content: maxAttachmentPreview(rawAttachments),
-      senderName: parsed.senderName,
-      senderUsername: parsed.senderUsername,
-      maxChatId: parsed.maxChatId,
-      maxUserId: parsed.maxUserId,
-      direction: parsed.direction,
-    });
-    if (fallback) {
-      return {
-        conversationId: fallback.conversation.id,
-        created: fallback.created,
-      };
-    }
-  }
 
   if (!result) return null;
 
