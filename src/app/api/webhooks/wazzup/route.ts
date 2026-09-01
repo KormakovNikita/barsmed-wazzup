@@ -41,6 +41,14 @@ export async function POST(request: Request) {
     const payload = maxPayload ?? parseWazzupTelegramMessage(msg);
     if (!payload) continue;
 
+    console.info(
+      "[wazzup-webhook]",
+      msg.chatType,
+      msg.type ?? "text",
+      maxPayload ? "max" : "telegram",
+      "processed",
+    );
+
     const result = processIncomingMessage(payload);
     if (result) {
       processed.push({

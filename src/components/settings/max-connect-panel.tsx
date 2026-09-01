@@ -24,7 +24,7 @@ interface MaxStatus {
   configured: boolean;
   connected: boolean;
   incomingMode?: "bot" | "wazzup";
-  mode: "webhook" | "polling" | "wazzup-webhook";
+  mode: "webhook" | "polling" | "hybrid";
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
@@ -181,7 +181,9 @@ export function MaxConnectPanel() {
             <p className="mt-1 text-xs text-muted-foreground">
               Режим входящих:{" "}
               {status.incomingMode === "wazzup"
-                ? "Wazzup webhook (голосовые на бота)"
+                ? status.mode === "hybrid"
+                  ? "Bot API + Wazzup (голосовые)"
+                  : "Bot API polling + Wazzup"
                 : status.mode === "webhook"
                   ? "Bot API webhook"
                   : "Bot API polling"}
@@ -223,8 +225,9 @@ export function MaxConnectPanel() {
               WEBHOOK_BASE_URL=https://ваш-домен.ru
             </pre>
             <p className="mt-2 text-xs text-sky-900 dark:text-sky-200">
-              HubDesk получит входящие (включая голосовые) через Wazzup webhook,
-              а ответы по-прежнему отправляет через <strong>MAX_BOT_TOKEN</strong>.
+              Текст и медиа приходят через <strong>Bot API</strong>, голосовые —
+              дополнительно через Wazzup webhook. Ответы отправляются через{" "}
+              <strong>MAX_BOT_TOKEN</strong>.
             </p>
             {status.incomingMode === "wazzup" && !status.wazzupRelay?.connected && (
               <p className="mt-2 text-xs text-destructive">

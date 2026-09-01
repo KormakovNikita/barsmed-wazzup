@@ -105,9 +105,8 @@ export async function POST(request: Request) {
         results.wazzupMax = await registerWazzupWebhook(
           `${baseUrl}/api/webhooks/wazzup`,
         );
-      } else {
-        results.max = await registerMaxWebhook(`${baseUrl}/api/webhooks/max`);
       }
+      results.max = await registerMaxWebhook(`${baseUrl}/api/webhooks/max`);
     }
 
     return NextResponse.json({ ok: true, results });

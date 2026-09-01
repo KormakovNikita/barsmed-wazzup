@@ -16,9 +16,9 @@ export function MaxProxyPanel() {
       <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
         <p className="font-medium">Схема работы</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
-          <li>Входящие MAX (включая голосовые) → Wazzup → HubDesk webhook</li>
-          <li>Исходящие ответы → MAX Bot API (<code>MAX_BOT_TOKEN</code>)</li>
-          <li>Bot API webhook/polling для входящих отключается автоматически</li>
+          <li>Текст и медиа → MAX Bot API (webhook/polling)</li>
+          <li>Голосовые → Wazzup webhook (дополнительно)</li>
+          <li>Исходящие ответы → MAX Bot API</li>
         </ul>
       </div>
 

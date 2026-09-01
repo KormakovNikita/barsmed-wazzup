@@ -70,22 +70,18 @@ export async function register() {
       const maxIncoming = getMaxIncomingMode();
       const webhookBase = process.env.WEBHOOK_BASE_URL;
 
-      if (maxIncoming === "wazzup" && process.env.WAZZUP_API_KEY) {
-        if (webhookBase) {
-          registerWazzupWebhook(`${webhookBase}/api/webhooks/wazzup`).catch(
-            (error) => {
-              console.error(
-                "[instrumentation] Wazzup webhook for MAX incoming failed:",
-                error,
-              );
-            },
-          );
-        } else {
-          console.warn(
-            "[instrumentation] MAX_INCOMING=wazzup requires WEBHOOK_BASE_URL for Wazzup webhooks",
-          );
-        }
-      } else if (webhookBase) {
+      if (maxIncoming === "wazzup" && process.env.WAZZUP_API_KEY && webhookBase) {
+        registerWazzupWebhook(`${webhookBase}/api/webhooks/wazzup`).catch(
+          (error) => {
+            console.error(
+              "[instrumentation] Wazzup webhook for MAX voice failed:",
+              error,
+            );
+          },
+        );
+      }
+
+      if (webhookBase) {
         registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {
           console.error("[instrumentation] MAX webhook registration failed:", error);
         });

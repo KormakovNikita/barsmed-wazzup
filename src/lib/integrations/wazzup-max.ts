@@ -41,8 +41,23 @@ export function isWazzupMaxIncomingConfigured(): boolean {
   return isWazzupConfigured() && getMaxIncomingMode() === "wazzup";
 }
 
+/** Bot API stays on in wazzup mode — Wazzup only supplements voice messages. */
 export function shouldUseMaxBotIncoming(): boolean {
-  return getMaxIncomingMode() === "bot";
+  return true;
+}
+
+export function isWazzupMaxVoiceMessage(msg: WazzupMaxWebhookMessage): boolean {
+  if (msg.isEcho) return false;
+  const msgType = (msg.type ?? "text").toLowerCase();
+  if (msgType === "audio") return true;
+  const uri = (msg.contentUri ?? "").toLowerCase();
+  return /\.(ogg|opus|oga|was|mp3|wav|m4a|aac)(?:\?|$)/.test(uri);
+}
+
+export function shouldWazzupHandleMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
+  if (!isWazzupMaxMessage(msg)) return false;
+  if (getMaxIncomingMode() !== "wazzup") return true;
+  return isWazzupMaxVoiceMessage(msg);
 }
 
 export function isWazzupMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
@@ -145,7 +160,7 @@ async function downloadWazzupContent(
 export async function parseWazzupMaxMessage(
   msg: WazzupMaxWebhookMessage,
 ): Promise<IncomingMessagePayload | null> {
-  if (!isWazzupMaxMessage(msg)) return null;
+  if (!shouldWazzupHandleMaxMessage(msg)) return null;
 
   const msgType = (msg.type ?? "text").toLowerCase();
   const isOutbound = msg.isEcho === true;

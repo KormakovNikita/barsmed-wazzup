@@ -104,7 +104,9 @@ export async function getIntegrationStatus() {
       incomingMode: maxIncoming,
       mode:
         maxIncoming === "wazzup"
-          ? "wazzup-webhook"
+          ? webhookBase
+            ? "hybrid"
+            : "polling"
           : webhookBase
             ? "webhook"
             : "polling",
