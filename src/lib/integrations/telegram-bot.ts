@@ -59,7 +59,7 @@ export async function setTelegramWebhook(webhookUrl: string): Promise<{
     body: JSON.stringify({
       url: webhookUrl,
       secret_token: secret || undefined,
-      allowed_updates: ["message"],
+      allowed_updates: ["message", "edited_message"],
     }),
   });
 
@@ -142,23 +142,27 @@ export async function getTelegramWebhookInfo(): Promise<{
 
 export interface TelegramUpdate {
   update_id: number;
-  message?: {
-    message_id: number;
-    from?: {
-      id: number;
-      first_name?: string;
-      last_name?: string;
-      username?: string;
-      is_bot?: boolean;
-    };
-    chat: { id: number; type: string };
-    text?: string;
-    date: number;
+  message?: TelegramBotMessage;
+  edited_message?: TelegramBotMessage;
+}
+
+interface TelegramBotMessage {
+  message_id: number;
+  from?: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    is_bot?: boolean;
   };
+  chat: { id: number; type: string };
+  text?: string;
+  date: number;
+  edit_date?: number;
 }
 
 export function parseTelegramBotUpdate(update: TelegramUpdate) {
-  const message = update.message;
+  const message = update.message ?? update.edited_message;
   if (!message?.text || !message.from) return null;
   if (message.from.is_bot) return null;
 
@@ -169,7 +173,8 @@ export function parseTelegramBotUpdate(update: TelegramUpdate) {
 
   return {
     externalThreadId: String(message.chat.id),
-    externalMessageId: `tg-bot-${update.update_id}-${message.message_id}`,
+    externalMessageId: `tg-bot-${message.chat.id}-${message.message_id}`,
+    channelMessageId: String(message.message_id),
     content: message.text,
     senderName: name || message.from.username || "Telegram user",
     senderUsername: message.from.username,

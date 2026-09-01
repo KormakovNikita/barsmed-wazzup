@@ -59,6 +59,8 @@ type MessageRow = {
   external_id: string | null;
   reply_to_message_id: string | null;
   created_at: string;
+  previous_content: string | null;
+  edited_at: string | null;
 };
 
 type AttachmentRow = {
@@ -253,6 +255,8 @@ function rowToMessage(row: MessageRow, attachments?: MessageAttachment[]): Messa
     externalId: row.external_id ?? undefined,
     replyToMessageId: row.reply_to_message_id ?? undefined,
     createdAt: row.created_at,
+    previousContent: row.previous_content ?? undefined,
+    editedAt: row.edited_at ?? undefined,
     attachments,
   };
 }
@@ -282,7 +286,7 @@ function findMessageIdByChannelMessageId(
     .prepare(
       `SELECT id FROM messages
        WHERE conversation_id = ?
-         AND (external_id = ? OR external_id LIKE ?)
+         AND (external_id = ? OR external_id LIKE ? OR external_id LIKE ? OR external_id = ?)
        ORDER BY created_at DESC
        LIMIT 1`,
     )
@@ -290,8 +294,116 @@ function findMessageIdByChannelMessageId(
       conversationId,
       channelMessageId,
       `tg-user-${channelMessageId}-%`,
+      `tg-bot-%${channelMessageId}`,
+      `max-${channelMessageId}`,
     ) as { id: string } | undefined;
   return row?.id;
+}
+
+function findExistingMessageRow(
+  conversationId: string,
+  payload: IncomingMessagePayload,
+): MessageRow | undefined {
+  const db = getDb();
+  const byExternalId = db
+    .prepare(
+      "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
+    )
+    .get(conversationId, payload.externalMessageId) as MessageRow | undefined;
+  if (byExternalId) return byExternalId;
+
+  if (payload.channelMessageId) {
+    const byChannelId = db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE conversation_id = ?
+           AND (external_id = ? OR external_id LIKE ? OR external_id LIKE ? OR external_id = ?)
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(
+        conversationId,
+        payload.channelMessageId,
+        `tg-user-${payload.channelMessageId}-%`,
+        `tg-bot-%${payload.channelMessageId}`,
+        `max-${payload.channelMessageId}`,
+      ) as MessageRow | undefined;
+    if (byChannelId) return byChannelId;
+  }
+
+  const wazzupMatch = payload.externalMessageId.match(/^wazzup-(?:max-)?(.+)$/);
+  if (wazzupMatch) {
+    const messageKey = wazzupMatch[1];
+    return db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE conversation_id = ?
+           AND external_id IN (?, ?, ?)
+         LIMIT 1`,
+      )
+      .get(
+        conversationId,
+        payload.externalMessageId,
+        `wazzup-${messageKey}`,
+        `wazzup-max-${messageKey}`,
+      ) as MessageRow | undefined;
+  }
+
+  const maxMid = payload.externalMessageId.replace(/^max-/, "");
+  if (maxMid && maxMid !== payload.externalMessageId) {
+    return db
+      .prepare(
+        "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
+      )
+      .get(conversationId, maxMid) as MessageRow | undefined;
+  }
+
+  return undefined;
+}
+
+function applyMessageEdit(
+  existing: MessageRow,
+  newContent: string,
+  conversationId: string,
+): Message | null {
+  const trimmed = newContent.trim();
+  if (!trimmed || trimmed === existing.content.trim()) {
+    return null;
+  }
+
+  const editedAt = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE messages
+       SET content = ?, previous_content = ?, edited_at = ?
+       WHERE id = ?`,
+    )
+    .run(trimmed, existing.content, editedAt, existing.id);
+
+  const latest = getDb()
+    .prepare(
+      "SELECT id FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(conversationId) as { id: string } | undefined;
+
+  if (latest?.id === existing.id) {
+    getDb()
+      .prepare(
+        "UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(trimmed, editedAt, conversationId);
+  }
+
+  const attachments = loadAttachmentsForMessages([existing.id]).get(existing.id);
+  return rowToMessage(
+    {
+      ...existing,
+      content: trimmed,
+      previous_content: existing.content,
+      edited_at: editedAt,
+    },
+    attachments,
+  );
 }
 
 function resolveReplyToChannelMessageId(
@@ -931,11 +1043,7 @@ export function processIncomingMessage(
             threadId,
           );
     if (!existing) return null;
-    const lastMessage = getDb()
-      .prepare(
-        "SELECT * FROM messages WHERE external_id = ? AND conversation_id = ? ORDER BY created_at DESC LIMIT 1",
-      )
-      .get(payload.externalMessageId, existing.id) as MessageRow | undefined;
+    const lastMessage = findExistingMessageRow(existing.id, payload);
     if (!lastMessage) return null;
 
     if (payload.attachments?.length) {
@@ -965,8 +1073,20 @@ export function processIncomingMessage(
       }
     }
 
+    const edited = applyMessageEdit(
+      lastMessage,
+      payload.content,
+      existing.id,
+    );
+    if (edited) {
+      return { message: edited, conversation: existing, created: false };
+    }
+
     return {
-      message: rowToMessage(lastMessage),
+      message: rowToMessage(
+        lastMessage,
+        loadAttachmentsForMessages([lastMessage.id]).get(lastMessage.id),
+      ),
       conversation: existing,
       created: false,
     };
@@ -1055,22 +1175,7 @@ export function processIncomingMessage(
       conversation;
   }
 
-  const externalMid = payload.externalMessageId.replace(/^max-/, "");
-  let duplicateOutbound: MessageRow | undefined;
-  if (payload.channelMessageId) {
-    duplicateOutbound = getDb()
-      .prepare(
-        "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
-      )
-      .get(conversation!.id, payload.channelMessageId) as MessageRow | undefined;
-  }
-  if (!duplicateOutbound) {
-    duplicateOutbound = getDb()
-      .prepare(
-        "SELECT * FROM messages WHERE conversation_id = ? AND external_id = ? LIMIT 1",
-      )
-      .get(conversation!.id, externalMid) as MessageRow | undefined;
-  }
+  const duplicateOutbound = findExistingMessageRow(conversation!.id, payload);
 
   if (duplicateOutbound) {
     getDb()
@@ -1078,8 +1183,27 @@ export function processIncomingMessage(
         "INSERT OR IGNORE INTO processed_external_ids (channel, external_message_id) VALUES (?, ?)",
       )
       .run(payload.channel, payload.externalMessageId);
+
+    const edited = applyMessageEdit(
+      duplicateOutbound,
+      payload.content,
+      conversation!.id,
+    );
+    if (edited) {
+      return {
+        message: edited,
+        conversation: conversation!,
+        created: false,
+      };
+    }
+
     return {
-      message: rowToMessage(duplicateOutbound),
+      message: rowToMessage(
+        duplicateOutbound,
+        loadAttachmentsForMessages([duplicateOutbound.id]).get(
+          duplicateOutbound.id,
+        ),
+      ),
       conversation: conversation!,
       created: false,
     };

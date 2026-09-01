@@ -77,6 +77,9 @@ export interface Message {
   replyToMessageId?: string;
   replyTo?: MessageReplyPreview;
   attachments?: MessageAttachment[];
+  /** Previous text before the user edited the message */
+  previousContent?: string;
+  editedAt?: string;
 }
 
 export interface IncomingAttachmentPayload {

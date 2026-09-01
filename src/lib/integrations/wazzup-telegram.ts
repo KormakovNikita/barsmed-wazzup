@@ -185,6 +185,7 @@ export function parseWazzupTelegramMessage(
     channel: "telegram",
     externalThreadId: msg.chatId,
     externalMessageId: `wazzup-${msg.messageId}`,
+    channelMessageId: msg.messageId,
     content: msg.text.trim(),
     senderName: contactName,
     senderUsername: msg.contact?.username,

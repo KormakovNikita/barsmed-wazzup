@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS messages (
   operator_id TEXT,
   external_id TEXT,
   reply_to_message_id TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  previous_content TEXT,
+  edited_at TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external
@@ -131,6 +133,12 @@ function migrateSchema(database: Database.Database): void {
     database.exec(
       "ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT",
     );
+  }
+  if (!messageNames.has("previous_content")) {
+    database.exec("ALTER TABLE messages ADD COLUMN previous_content TEXT");
+  }
+  if (!messageNames.has("edited_at")) {
+    database.exec("ALTER TABLE messages ADD COLUMN edited_at TEXT");
   }
 
   const conversationColumns = database

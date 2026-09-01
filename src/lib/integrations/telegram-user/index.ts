@@ -1,7 +1,7 @@
 import { TelegramClient } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import { Api } from "teleproto/tl";
-import { NewMessage } from "teleproto/events";
+import { NewMessage, EditedMessage } from "teleproto/events";
 import {
   createAuthClient,
   deletePendingAuth,
@@ -332,6 +332,17 @@ export async function startTelegramUserListener() {
       }
     },
     new NewMessage({}),
+  );
+
+  c.addEventHandler(
+    async (event) => {
+      try {
+        await processTelegramUserMessage(event.message, c);
+      } catch (error) {
+        console.error("[telegram-user] edited message handler error:", error);
+      }
+    },
+    new EditedMessage({}),
   );
 }
 

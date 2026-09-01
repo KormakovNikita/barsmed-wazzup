@@ -55,7 +55,15 @@ function mergeConversationDetail(
 
   if (
     prevMessages.length === nextMessages.length &&
-    prevMessages.every((msg, index) => msg.id === nextMessages[index]?.id)
+    prevMessages.every((msg, index) => {
+      const next = nextMessages[index];
+      if (!next || msg.id !== next.id) return false;
+      return (
+        msg.content === next.content &&
+        msg.previousContent === next.previousContent &&
+        msg.editedAt === next.editedAt
+      );
+    })
   ) {
     return {
       ...incoming,

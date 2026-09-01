@@ -544,6 +544,16 @@ export function ChatPanel({
                         <AttachmentView attachment={attachment} isOut={isOut} />
                       </div>
                     ))}
+                    {msg.previousContent?.trim() && (
+                      <p
+                        className={cn(
+                          "mb-1 whitespace-pre-wrap break-words text-[13px] line-through opacity-60",
+                          isOut ? "text-white/70" : "text-muted-foreground",
+                        )}
+                      >
+                        {msg.previousContent}
+                      </p>
+                    )}
                     {msg.content.trim() && (
                       <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                     )}
@@ -556,6 +566,9 @@ export function ChatPanel({
                       <span>
                         {format(new Date(msg.createdAt), "HH:mm", { locale: ru })}
                       </span>
+                      {msg.editedAt && (
+                        <span className="italic opacity-80">изменено</span>
+                      )}
                       {isOut && <MessageStatusIcon status={msg.status} />}
                     </div>
                   </div>
