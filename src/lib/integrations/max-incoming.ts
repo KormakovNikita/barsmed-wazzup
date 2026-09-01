@@ -1,5 +1,10 @@
 import { parseMaxUpdate, type MaxUpdate } from "@/lib/integrations/max";
 import {
+  enrichMaxUpdate,
+  scheduleMaxMediaRetry,
+  shouldScheduleMediaRetry,
+} from "@/lib/integrations/max-enrich";
+import {
   downloadMaxAttachments,
   maxAttachmentPreview,
 } from "@/lib/integrations/max-media";
@@ -7,13 +12,25 @@ import { processIncomingMessage } from "@/lib/store";
 
 export async function processMaxIncomingUpdate(
   update: MaxUpdate,
+  options?: { skipEnrich?: boolean },
 ): Promise<{ conversationId: string; created: boolean } | null> {
-  const parsed = parseMaxUpdate(update);
-  if (!parsed) return null;
+  const enriched = options?.skipEnrich
+    ? update
+    : await enrichMaxUpdate(update);
 
-  const rawAttachments = update.message?.body?.attachments;
+  const parsed = parseMaxUpdate(enriched);
+  if (!parsed) {
+    if (!options?.skipEnrich && shouldScheduleMediaRetry(enriched)) {
+      scheduleMaxMediaRetry(enriched, (retryUpdate) =>
+        processMaxIncomingUpdate(retryUpdate, { skipEnrich: true }),
+      );
+    }
+    return null;
+  }
+
+  const rawAttachments = enriched.message?.body?.attachments;
   const messageMid =
-    update.message?.body?.mid ??
+    enriched.message?.body?.mid ??
     parsed.channelMessageId ??
     parsed.externalMessageId.replace(/^max-/, "");
 

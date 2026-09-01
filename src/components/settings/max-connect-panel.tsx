@@ -60,29 +60,20 @@ export function MaxConnectPanel() {
       const res = await fetch("/api/integrations/max/sync-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "all" }),
+        body: JSON.stringify({ source: "max" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации");
 
       const max = data.results?.max;
-      const wazzup = data.results?.wazzup;
 
-      const parts: string[] = [];
       if (max?.details?.length) {
-        parts.push(
+        setMessage(
           `MAX: ${max.imported} сообщений в ${max.conversations} диалогах`,
         );
+      } else {
+        setMessage("Синхронизация MAX завершена");
       }
-      if (wazzup?.ok) {
-        parts.push(
-          `Wazzup: ${wazzup.imported} сообщений, ${wazzup.chats} клиентов`,
-        );
-      } else if (wazzup?.skipped) {
-        parts.push("Wazzup: не настроен (нужен WAZZUP_API_KEY)");
-      }
-
-      setMessage(parts.join(". ") || "Синхронизация завершена");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -195,24 +186,21 @@ export function MaxConnectPanel() {
               Голосовые сообщения MAX (удержание кнопки записи)
             </p>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              Через Bot API они <strong>не передаются ботам</strong> — MAX не
-              отдаёт их ни в webhook, ни в истории сообщений. HubDesk получает
-              текст, фото, видео и файлы, но не нативные голосовые. Это
-              ограничение платформы, не ошибка интеграции.
+              MAX Bot API обычно <strong>не передаёт нативные голосовые</strong>{" "}
+              ботам — ни в webhook, ни в истории. HubDesk автоматически
+              дозапрашивает сообщение и повторяет попытки загрузки медиа, но
+              если платформа не отдаёт вложение, сообщение не появится.
             </p>
             <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-              Варианты: попросить клиента отправить аудио как{" "}
-              <strong>файл</strong> (не голосовое); или подключить{" "}
-              <strong>MAX через Wazzup</strong> (живой аккаунт, не бот) — там
-              голосовые приходят как MP3.
+              Что работает: текст, фото, видео, документы и{" "}
+              <strong>аудио, отправленное как файл</strong> (не кнопкой
+              записи). Попросите клиента при необходимости прикрепить аудио
+              через «Файл» или «Документ».
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Загружает историю из MAX API для всех известных диалогов. Чтобы
-            подтянуть <strong>всех</strong> клиентов, которые писали раньше
-            через Wazzup, добавьте <code>WAZZUP_API_KEY</code> в{" "}
-            <code>.env.local</code> (API-ключ из личного кабинета Wazzup →
-            Интеграция → API).
+            Загружает историю из MAX Bot API для всех известных диалогов с
+            ботом.
           </p>
         </div>
       ) : status?.configured ? (

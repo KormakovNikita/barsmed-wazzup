@@ -107,7 +107,35 @@ interface ResolvedMediaUrl {
   fileName?: string;
 }
 
-/** MAX often sends audio/video with token only — resolve via /audios/{token} or /videos/{token} */
+function pickMediaUrl(data: {
+  url?: string;
+  filename?: string;
+  files?: { mp4?: { url?: string } };
+  urls?: Record<string, string | undefined>;
+}): string | undefined {
+  return (
+    data.url ??
+    data.files?.mp4?.url ??
+    data.urls?.mp4_720 ??
+    data.urls?.mp4_480 ??
+    data.urls?.mp4_360 ??
+    data.urls?.mp4 ??
+    Object.values(data.urls ?? {}).find(
+      (value) => typeof value === "string" && value.startsWith("http"),
+    )
+  );
+}
+
+function tokenResolveEndpoints(type: string, tokenStr: string): string[] {
+  if (type === "video") return [`/videos/${tokenStr}`];
+  if (type === "audio" || type === "voice") {
+    return [`/audios/${tokenStr}`, `/files/${tokenStr}`];
+  }
+  if (type === "file") return [`/files/${tokenStr}`];
+  return [`/files/${tokenStr}`, `/audios/${tokenStr}`];
+}
+
+/** MAX often sends audio/video with token only — resolve via Bot API media endpoints */
 async function resolveMaxMediaUrl(
   type: string,
   attachment: MaxMessageAttachment,
@@ -121,49 +149,37 @@ async function resolveMaxMediaUrl(
   if (!token) return null;
 
   const tokenStr = encodeURIComponent(token);
-  const endpoint =
-    type === "video"
-      ? `/videos/${tokenStr}`
-      : type === "audio" || type === "voice"
-        ? `/audios/${tokenStr}`
-        : null;
-
-  if (!endpoint) return null;
-
   const botToken = getMaxBotToken();
   if (!botToken) return null;
 
-  try {
-    const response = await fetch(`${getMaxApiBase()}${endpoint}`, {
-      headers: { Authorization: botToken },
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      console.error(
-        `[max-media] resolve ${endpoint} failed:`,
-        response.status,
-        await response.text().catch(() => ""),
-      );
-      return null;
+  for (const endpoint of tokenResolveEndpoints(type, tokenStr)) {
+    try {
+      const response = await fetch(`${getMaxApiBase()}${endpoint}`, {
+        headers: { Authorization: botToken },
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+
+      const data = (await response.json()) as {
+        url?: string;
+        filename?: string;
+        files?: { mp4?: { url?: string } };
+        urls?: Record<string, string | undefined>;
+      };
+
+      const url = pickMediaUrl(data);
+      if (!url) continue;
+
+      return {
+        url,
+        fileName: data.filename ?? attachment.filename,
+      };
+    } catch (error) {
+      console.error(`[max-media] resolve ${endpoint} failed:`, error);
     }
-
-    const data = (await response.json()) as {
-      url?: string;
-      filename?: string;
-      files?: { mp4?: { url?: string } };
-    };
-
-    const url = data.url ?? data.files?.mp4?.url;
-    if (!url) return null;
-
-    return {
-      url,
-      fileName: data.filename ?? attachment.filename,
-    };
-  } catch (error) {
-    console.error("[max-media] resolve media url failed:", error);
-    return null;
   }
+
+  return null;
 }
 
 async function fetchMaxMessageAttachments(
@@ -245,13 +261,7 @@ export async function downloadMaxAttachments(
   const token = getMaxBotToken();
   let resolvedAttachments: MaxMessageAttachment[] | undefined;
 
-  const needsMessageFetch = attachments.some(
-    (attachment) =>
-      isMaxMediaAttachment(attachment) &&
-      !attachment.payload?.url &&
-      !attachment.payload?.token,
-  );
-  if (needsMessageFetch && options?.messageId) {
+  if (options?.messageId) {
     resolvedAttachments = await fetchMaxMessageAttachments(options.messageId);
   }
 
