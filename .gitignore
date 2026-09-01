@@ -35,6 +35,7 @@ yarn-error.log*
 
 # telegram session data
 .data/
+/sessions
 
 # vercel
 .vercel

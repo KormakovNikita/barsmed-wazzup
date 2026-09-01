@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, symlinkSync } from "fs";
-import { join } from "path";
+import { existsSync, lstatSync, mkdirSync, symlinkSync } from "fs";
+import { join, relative } from "path";
 
 /** Persist webmaxsocket sessions under .data (Docker volume). */
 export function ensureMaxProxySessionDir(): void {
@@ -9,7 +9,19 @@ export function ensureMaxProxySessionDir(): void {
   mkdirSync(dataSessions, { recursive: true });
 
   if (!existsSync(defaultSessions)) {
-    symlinkSync(dataSessions, defaultSessions);
+    const relTarget = relative(process.cwd(), dataSessions);
+    symlinkSync(relTarget, defaultSessions);
+    return;
+  }
+
+  try {
+    const stat = lstatSync(defaultSessions);
+    if (stat.isSymbolicLink()) {
+      // already linked — ok
+      return;
+    }
+  } catch {
+    // ignore
   }
 }
 
