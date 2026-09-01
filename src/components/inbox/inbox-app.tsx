@@ -130,7 +130,8 @@ export function InboxApp() {
     const interval = setInterval(async () => {
       const shouldPoll =
         (integrationStatus?.telegram.configured &&
-          integrationStatus.telegram.mode === "polling") ||
+          (integrationStatus.telegram.mode === "polling" ||
+            integrationStatus.telegram.mode === "user")) ||
         (integrationStatus?.max.configured &&
           integrationStatus.max.mode === "polling");
 

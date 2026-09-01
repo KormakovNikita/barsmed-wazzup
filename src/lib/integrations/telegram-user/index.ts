@@ -2,7 +2,6 @@ import { TelegramClient } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import { Api } from "teleproto/tl";
 import { NewMessage } from "teleproto/events";
-import { processIncomingMessage } from "@/lib/store";
 import {
   createAuthClient,
   deletePendingAuth,
@@ -11,6 +10,7 @@ import {
   storePendingAuth,
   type PendingTelegramAuth,
 } from "./auth-state";
+import { processTelegramUserMessage } from "./message-handler";
 import { getTelegramClientOptions } from "./proxy";
 import {
   clearTelegramSession,
@@ -40,6 +40,19 @@ export function getTelegramUserMode(): "user" | "bot" | "wazzup" {
   return "user";
 }
 
+export async function resetTelegramUserClient(): Promise<void> {
+  listenerStarted = false;
+  if (client?.connected) {
+    try {
+      await client.disconnect();
+    } catch {
+      // ignore disconnect errors during reset
+    }
+  }
+  client = null;
+  connecting = null;
+}
+
 export async function getTelegramUserClient(): Promise<TelegramClient | null> {
   const creds = getApiCredentials();
   if (!creds) return null;
@@ -65,6 +78,10 @@ export async function getTelegramUserClient(): Promise<TelegramClient | null> {
 
   try {
     return await connecting;
+  } catch (error) {
+    client = null;
+    listenerStarted = false;
+    throw error;
   } finally {
     connecting = null;
   }
@@ -218,9 +235,7 @@ export async function completeTelegramAuth(
 }
 
 async function finalizeAuthorizedClient(pending: PendingTelegramAuth) {
-  if (client?.connected) {
-    await client.disconnect();
-  }
+  await resetTelegramUserClient();
 
   client = pending.client;
   const session = client.session.save() as string;
@@ -229,12 +244,13 @@ async function finalizeAuthorizedClient(pending: PendingTelegramAuth) {
 }
 
 export async function disconnectTelegramUser() {
-  listenerStarted = false;
-  if (client?.connected) {
-    await client.disconnect();
-  }
-  client = null;
+  await resetTelegramUserClient();
   clearTelegramSession();
+}
+
+export async function restartTelegramUserListener(): Promise<void> {
+  await resetTelegramUserClient();
+  await startTelegramUserListener();
 }
 
 export async function startTelegramUserListener() {
@@ -244,32 +260,12 @@ export async function startTelegramUserListener() {
   if (!c || !(await c.isUserAuthorized())) return;
 
   listenerStarted = true;
+  console.info("[telegram-user] starting incoming message listener");
 
   c.addEventHandler(
     async (event) => {
       try {
-        const message = event.message;
-        if (!message || message.out || !message.text) return;
-
-        const sender = await message.getSender();
-        if (!sender || !("firstName" in sender) || sender.bot) return;
-
-        const chatId = message.chatId?.toString();
-        if (!chatId) return;
-
-        const name = [sender.firstName, sender.lastName]
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-
-        processIncomingMessage({
-          channel: "telegram",
-          externalThreadId: chatId,
-          externalMessageId: `tg-user-${message.id}-${message.date}`,
-          content: message.text,
-          senderName: name || sender.username || "Telegram",
-          senderUsername: sender.username,
-        });
+        await processTelegramUserMessage(event.message);
       } catch (error) {
         console.error("[telegram-user] incoming handler error:", error);
       }
@@ -284,3 +280,5 @@ export function getTelegramUserStatus() {
     hasSession: hasTelegramSession(),
   };
 }
+
+export { processTelegramUserMessage } from "./message-handler";

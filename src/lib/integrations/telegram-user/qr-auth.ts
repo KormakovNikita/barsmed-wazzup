@@ -87,8 +87,8 @@ export async function startTelegramQrAuth(): Promise<{ authId: string }> {
       pendingQrAuths.delete(authId);
       await authClient.disconnect();
 
-      const { startTelegramUserListener } = await import("./index");
-      await startTelegramUserListener();
+      const { restartTelegramUserListener } = await import("./index");
+      await restartTelegramUserListener();
     })
     .catch((error) => {
       if (pending.status === "complete") return;

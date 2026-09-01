@@ -16,11 +16,15 @@ export async function register() {
     const { startTelegramPollingListener } = await import(
       "@/lib/integrations/telegram-polling",
     );
+    const { startTelegramUserPollingListener } = await import(
+      "@/lib/integrations/telegram-user-polling",
+    );
 
     if (getTelegramMode() === "user") {
       startTelegramUserListener().catch((error) => {
         console.error("[instrumentation] Telegram user listener failed:", error);
       });
+      startTelegramUserPollingListener();
     }
 
     if (getTelegramMode() === "bot" && isTelegramBotConfigured()) {

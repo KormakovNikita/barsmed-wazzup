@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parseTelegramWebhookBody } from "@/lib/integrations";
 import { drainMaxUpdates } from "@/lib/integrations/max-polling";
 import { drainTelegramUpdates } from "@/lib/integrations/telegram-polling";
+import { drainTelegramUserUpdates } from "@/lib/integrations/telegram-user-polling";
 import { getTelegramMode, pollTelegramUpdates } from "@/lib/integrations/telegram";
 import { processIncomingMessage } from "@/lib/store";
 
@@ -16,6 +17,15 @@ export async function POST() {
 
   if (getTelegramMode() === "bot") {
     const telegramEvents = await drainTelegramUpdates();
+    for (const event of telegramEvents) {
+      processed.push({
+        channel: "telegram",
+        conversationId: event.conversationId,
+        created: event.created,
+      });
+    }
+  } else if (getTelegramMode() === "user") {
+    const telegramEvents = await drainTelegramUserUpdates();
     for (const event of telegramEvents) {
       processed.push({
         channel: "telegram",

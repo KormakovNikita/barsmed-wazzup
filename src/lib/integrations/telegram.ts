@@ -70,6 +70,10 @@ export async function pollTelegramUpdates(offset?: number) {
   const mode = getTelegramMode();
   if (mode === "user") {
     await startTelegramUserListener();
+    const { drainTelegramUserUpdates } = await import(
+      "@/lib/integrations/telegram-user-polling",
+    );
+    await drainTelegramUserUpdates();
     return { updates: [] as TelegramUpdate[], nextOffset: offset };
   }
   if (mode === "wazzup") {
@@ -151,6 +155,7 @@ export {
   completeTelegramAuth,
   disconnectTelegramUser,
   resolveTelegramPeer,
+  restartTelegramUserListener,
   startTelegramUserListener,
 } from "./telegram-user";
 
