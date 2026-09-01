@@ -81,6 +81,54 @@ function messageSupportsReply(
   return false;
 }
 
+function normalizeClipboardFile(file: File): File {
+  if (file.name && file.name !== "image.png" && file.name !== "blob") {
+    return file;
+  }
+  const ext = file.type.includes("png")
+    ? ".png"
+    : file.type.includes("jpeg") || file.type.includes("jpg")
+      ? ".jpg"
+      : file.type.includes("webp")
+        ? ".webp"
+        : file.type.includes("gif")
+          ? ".gif"
+          : file.type.includes("mp4")
+            ? ".mp4"
+            : file.type.includes("pdf")
+              ? ".pdf"
+              : file.type.includes("ogg")
+                ? ".ogg"
+                : file.type.includes("mpeg") || file.type.includes("mp3")
+                  ? ".mp3"
+                  : "";
+  const name = file.name && file.name !== "blob"
+    ? file.name
+    : `clipboard-${Date.now()}${ext || ".bin"}`;
+  return new File([file], name, { type: file.type || "application/octet-stream" });
+}
+
+function pickFileFromClipboard(
+  clipboardData: DataTransfer | null,
+): File | null {
+  if (!clipboardData) return null;
+
+  for (const item of Array.from(clipboardData.items)) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) return normalizeClipboardFile(file);
+  }
+
+  return null;
+}
+
+function attachmentLabel(file: File): string {
+  if (file.type.startsWith("image/")) return "📷 Изображение";
+  if (file.type.startsWith("video/")) return "🎬 Видео";
+  if (file.type.startsWith("audio/")) return "🎵 Аудио";
+  return "📎 Файл";
+}
+
 function messagePreview(msg: Message): string {
   if (msg.content.trim()) return msg.content.trim();
   if (msg.attachments?.length) {
@@ -174,6 +222,7 @@ export function ChatPanel({
   const [dismissing, setDismissing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageCountRef = useRef(0);
@@ -191,6 +240,16 @@ export function ChatPanel({
       viewport.scrollTop = viewport.scrollHeight;
     }
   }, []);
+
+  useEffect(() => {
+    if (!selectedFile?.type.startsWith("image/")) {
+      setFilePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile);
+    setFilePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile]);
 
   useEffect(() => {
     if (conversation?.id !== conversationIdRef.current) {
@@ -232,6 +291,14 @@ export function ChatPanel({
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const file = pickFileFromClipboard(e.clipboardData);
+    if (!file) return;
+    e.preventDefault();
+    setSelectedFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   if (loading) {
@@ -466,8 +533,22 @@ export function ChatPanel({
         )}
         {selectedFile && (
           <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-            <Paperclip className="h-4 w-4 shrink-0" />
-            <span className="truncate">{selectedFile.name}</span>
+            {filePreviewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={filePreviewUrl}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded object-cover"
+              />
+            ) : (
+              <Paperclip className="h-4 w-4 shrink-0" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{selectedFile.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {attachmentLabel(selectedFile)}
+              </p>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -486,8 +567,10 @@ export function ChatPanel({
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip"
-            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              setSelectedFile(file ? normalizeClipboardFile(file) : null);
+            }}
           />
           <Button
             type="button"
@@ -503,11 +586,12 @@ export function ChatPanel({
             placeholder={
               replyToMessage
                 ? "Напишите ответ..."
-                : "Напишите сообщение..."
+                : "Напишите сообщение или вставьте файл (Ctrl+V)..."
             }
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             rows={2}
             className="min-h-[44px] resize-none"
           />
