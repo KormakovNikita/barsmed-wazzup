@@ -61,6 +61,30 @@ export async function sendMaxMessage(
 
   if (!response.ok) {
     const text = await response.text();
+    // Some API clients use message_id instead of mid
+    if (payload.replyToChannelMessageId && text.includes("link")) {
+      const retryBody = {
+        ...body,
+        link: {
+          type: "reply",
+          message_id: payload.replyToChannelMessageId,
+        },
+      };
+      const retry = await fetch(
+        `${getMaxApiBase()}/messages?${params.toString()}`,
+        {
+          method: "POST",
+          headers: maxHeaders(),
+          body: JSON.stringify(retryBody),
+        },
+      );
+      if (retry.ok) {
+        const data = (await retry.json()) as {
+          message?: { body?: { mid?: string } };
+        };
+        return { ok: true, externalId: data.message?.body?.mid };
+      }
+    }
     return { ok: false, error: text || `MAX API ${response.status}` };
   }
 

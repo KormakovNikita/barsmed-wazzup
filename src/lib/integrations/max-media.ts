@@ -58,10 +58,7 @@ function mapMaxMediaType(
   return "document";
 }
 
-function guessMimeType(
-  type: string,
-  fileName?: string,
-): string {
+function guessMimeType(type: string, fileName?: string): string {
   const lower = (fileName ?? "").toLowerCase();
   if (type === "image") {
     if (lower.endsWith(".png")) return "image/png";
@@ -105,6 +102,70 @@ function needsAuthHeader(url: string): boolean {
   return url.includes("oneme.ru");
 }
 
+interface ResolvedMediaUrl {
+  url: string;
+  fileName?: string;
+}
+
+/** MAX often sends audio/video with token only — resolve via /audios/{token} or /videos/{token} */
+async function resolveMaxMediaUrl(
+  type: string,
+  attachment: MaxMessageAttachment,
+): Promise<ResolvedMediaUrl | null> {
+  const directUrl = attachment.payload?.url;
+  if (directUrl) {
+    return { url: directUrl, fileName: attachment.filename };
+  }
+
+  const token = attachment.payload?.token;
+  if (!token) return null;
+
+  const tokenStr = encodeURIComponent(token);
+  const endpoint =
+    type === "video"
+      ? `/videos/${tokenStr}`
+      : type === "audio" || type === "voice"
+        ? `/audios/${tokenStr}`
+        : null;
+
+  if (!endpoint) return null;
+
+  const botToken = getMaxBotToken();
+  if (!botToken) return null;
+
+  try {
+    const response = await fetch(`${getMaxApiBase()}${endpoint}`, {
+      headers: { Authorization: botToken },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      console.error(
+        `[max-media] resolve ${endpoint} failed:`,
+        response.status,
+        await response.text().catch(() => ""),
+      );
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      url?: string;
+      filename?: string;
+      files?: { mp4?: { url?: string } };
+    };
+
+    const url = data.url ?? data.files?.mp4?.url;
+    if (!url) return null;
+
+    return {
+      url,
+      fileName: data.filename ?? attachment.filename,
+    };
+  } catch (error) {
+    console.error("[max-media] resolve media url failed:", error);
+    return null;
+  }
+}
+
 async function fetchMaxMessageAttachments(
   messageId: string,
 ): Promise<MaxMessageAttachment[] | undefined> {
@@ -137,14 +198,16 @@ async function fetchMaxMessageAttachments(
   }
 }
 
-function resolveAttachmentUrl(
+function findResolvedAttachment(
   attachment: MaxMessageAttachment,
-  resolved?: MaxMessageAttachment,
-): string | undefined {
-  return (
-    attachment.payload?.url ??
-    resolved?.payload?.url ??
-    undefined
+  resolvedAttachments?: MaxMessageAttachment[],
+): MaxMessageAttachment | undefined {
+  if (!resolvedAttachments?.length) return undefined;
+  return resolvedAttachments.find(
+    (item) =>
+      item.type === attachment.type &&
+      (item.payload?.token === attachment.payload?.token ||
+        item.filename === attachment.filename),
   );
 }
 
@@ -157,11 +220,13 @@ export async function downloadMaxAttachments(
   const token = getMaxBotToken();
   let resolvedAttachments: MaxMessageAttachment[] | undefined;
 
-  const needsResolve = attachments.some(
+  const needsMessageFetch = attachments.some(
     (attachment) =>
-      isMaxMediaAttachment(attachment) && !attachment.payload?.url,
+      isMaxMediaAttachment(attachment) &&
+      !attachment.payload?.url &&
+      !attachment.payload?.token,
   );
-  if (needsResolve && options?.messageId) {
+  if (needsMessageFetch && options?.messageId) {
     resolvedAttachments = await fetchMaxMessageAttachments(options.messageId);
   }
 
@@ -170,23 +235,31 @@ export async function downloadMaxAttachments(
   for (const attachment of attachments) {
     if (!isMaxMediaAttachment(attachment)) continue;
 
-    const resolved = resolvedAttachments?.find(
-      (item) =>
-        item.type === attachment.type &&
-        (item.payload?.token === attachment.payload?.token ||
-          item.filename === attachment.filename),
-    );
+    const fromMessage = findResolvedAttachment(attachment, resolvedAttachments);
+    const merged: MaxMessageAttachment = {
+      ...attachment,
+      payload: {
+        ...attachment.payload,
+        url: attachment.payload?.url ?? fromMessage?.payload?.url,
+        token: attachment.payload?.token ?? fromMessage?.payload?.token,
+      },
+      filename: attachment.filename ?? fromMessage?.filename,
+      size: attachment.size ?? fromMessage?.size,
+    };
 
-    const url = resolveAttachmentUrl(attachment, resolved);
-    if (!url) continue;
+    const resolved = await resolveMaxMediaUrl(merged.type, merged);
+    if (!resolved?.url) continue;
 
     try {
       const headers: HeadersInit = {};
-      if (token && needsAuthHeader(url)) {
+      if (token && needsAuthHeader(resolved.url)) {
         headers.Authorization = token;
       }
 
-      const response = await fetch(url, { cache: "no-store", headers });
+      const response = await fetch(resolved.url, {
+        cache: "no-store",
+        headers,
+      });
       if (!response.ok) continue;
 
       const buffer = Buffer.from(await response.arrayBuffer());
@@ -194,17 +267,17 @@ export async function downloadMaxAttachments(
 
       const mimeType =
         response.headers.get("content-type")?.split(";")[0]?.trim() ||
-        guessMimeType(attachment.type, attachment.filename);
+        guessMimeType(merged.type, resolved.fileName ?? merged.filename);
 
       results.push({
         type: mapMaxMediaType(
-          attachment.type,
-          attachment.filename,
+          merged.type,
+          resolved.fileName ?? merged.filename,
           mimeType,
         ),
         mimeType,
-        fileName: attachment.filename,
-        fileSize: attachment.size ?? buffer.length,
+        fileName: resolved.fileName ?? merged.filename,
+        fileSize: merged.size ?? buffer.length,
         buffer,
       });
     } catch (error) {

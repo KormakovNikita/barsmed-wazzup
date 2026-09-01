@@ -315,9 +315,24 @@ export function ChatPanel({
                 <div
                   className={cn("group flex items-end gap-1", isOut ? "justify-end" : "justify-start")}
                 >
+                  {canReplyToMessages && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
+                        isOut ? "order-3" : "order-1",
+                      )}
+                      title="Ответить"
+                      onClick={() => setReplyToMessage(msg)}
+                    >
+                      <CornerUpLeft className="h-4 w-4" />
+                    </Button>
+                  )}
                   <div
                     className={cn(
-                      "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm transition-colors",
+                      "order-2 max-w-[75%] rounded-2xl px-3.5 py-2 text-sm transition-colors",
                       isOut
                         ? "rounded-br-md bg-primary text-primary-foreground"
                         : "rounded-bl-md bg-muted",
@@ -325,6 +340,11 @@ export function ChatPanel({
                     )}
                     onDoubleClick={() => {
                       if (canReplyToMessages) setReplyToMessage(msg);
+                    }}
+                    onContextMenu={(event) => {
+                      if (!canReplyToMessages) return;
+                      event.preventDefault();
+                      setReplyToMessage(msg);
                     }}
                   >
                     {msg.replyTo && (
@@ -356,13 +376,8 @@ export function ChatPanel({
                   {canReplyToMessages && (
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                          />
-                        }
+                        className="h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 inline-flex items-center justify-center rounded-md hover:bg-accent"
+                        title="Действия"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </DropdownMenuTrigger>
