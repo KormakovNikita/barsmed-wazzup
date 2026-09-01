@@ -734,18 +734,18 @@ export function searchConversations(
        FROM conversations c
        JOIN contacts ct ON ct.id = c.contact_id
        WHERE (
-         LOWER(ct.name) LIKE ?
-         OR LOWER(COALESCE(ct.phone, '')) LIKE ?
-         OR LOWER(COALESCE(ct.email, '')) LIKE ?
-         OR LOWER(c.last_message_preview) LIKE ?
+         unicode_lower(ct.name) LIKE ?
+         OR unicode_lower(COALESCE(ct.phone, '')) LIKE ?
+         OR unicode_lower(COALESCE(ct.email, '')) LIKE ?
+         OR unicode_lower(c.last_message_preview) LIKE ?
          OR EXISTS (
            SELECT 1 FROM messages m
-           WHERE m.conversation_id = c.id AND LOWER(m.content) LIKE ?
+           WHERE m.conversation_id = c.id AND unicode_lower(m.content) LIKE ?
          )
          OR EXISTS (
            SELECT 1 FROM messages m
            JOIN message_attachments ma ON ma.message_id = m.id
-           WHERE m.conversation_id = c.id AND LOWER(COALESCE(ma.file_name, '')) LIKE ?
+           WHERE m.conversation_id = c.id AND unicode_lower(COALESCE(ma.file_name, '')) LIKE ?
          )
        )
        ${channelFilter}
@@ -755,7 +755,7 @@ export function searchConversations(
 
   const findMessageMatch = getDb().prepare(
     `SELECT content FROM messages
-     WHERE conversation_id = ? AND LOWER(content) LIKE ?
+     WHERE conversation_id = ? AND unicode_lower(content) LIKE ?
      ORDER BY created_at DESC
      LIMIT 1`,
   );

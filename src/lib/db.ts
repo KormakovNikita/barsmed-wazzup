@@ -95,6 +95,17 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `;
 
+function registerDbFunctions(database: Database.Database): void {
+  database.function(
+    "unicode_lower",
+    { deterministic: true, varargs: false },
+    (value: unknown) => {
+      if (value == null) return null;
+      return String(value).toLowerCase();
+    },
+  );
+}
+
 export function getDb(): Database.Database {
   if (!db) {
     const dir = path.join(process.cwd(), ".data");
@@ -102,6 +113,7 @@ export function getDb(): Database.Database {
     const dbPath =
       process.env.DATABASE_PATH ?? path.join(dir, "hubdesk.db");
     db = new Database(dbPath);
+    registerDbFunctions(db);
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.exec(SCHEMA);
