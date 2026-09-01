@@ -16,6 +16,7 @@ import {
   sendTelegramMessage,
   type TelegramUpdate,
 } from "./telegram";
+import { getMaxIncomingMode, getWazzupMaxStatus } from "./wazzup-max";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -82,6 +83,9 @@ export async function getIntegrationStatus() {
   const maxConfigured = isMaxConfigured();
   const maxInfo = maxConfigured ? await getMaxBotInfo() : null;
   const maxSubs = maxConfigured ? await listMaxSubscriptions() : null;
+  const maxIncoming = getMaxIncomingMode();
+  const wazzupMax =
+    maxIncoming === "wazzup" ? await getWazzupMaxStatus() : null;
 
   return {
     telegram: {
@@ -97,10 +101,27 @@ export async function getIntegrationStatus() {
     max: {
       configured: maxConfigured,
       connected: maxInfo?.ok ?? false,
-      mode: webhookBase ? "webhook" : "polling",
+      incomingMode: maxIncoming,
+      mode:
+        maxIncoming === "wazzup"
+          ? "wazzup-webhook"
+          : webhookBase
+            ? "webhook"
+            : "polling",
       profile: maxInfo?.bot ?? null,
       error: maxInfo?.ok === false ? maxInfo.error : null,
       webhooks: maxSubs?.subscriptions ?? [],
+      wazzupRelay: wazzupMax
+        ? {
+            configured: wazzupMax.configured,
+            connected: wazzupMax.connected,
+            channelId: wazzupMax.channelId,
+            channelName: wazzupMax.channelName,
+            transport: wazzupMax.transport,
+            webhookUrl: wazzupMax.webhookUrl,
+            error: wazzupMax.error ?? null,
+          }
+        : null,
     },
     webhookBaseUrl: webhookBase ?? null,
     assignmentStrategy:
