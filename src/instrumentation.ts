@@ -59,13 +59,33 @@ export async function register() {
 
     if (isMaxConfigured()) {
       const { mergeDuplicateMaxConversations } = await import("@/lib/store");
+      const { getMaxIncomingMode } = await import(
+        "@/lib/integrations/wazzup-max",
+      );
       const merged = mergeDuplicateMaxConversations();
       if (merged > 0) {
         console.info(`[instrumentation] Merged ${merged} duplicate MAX dialogs`);
       }
 
+      const maxIncoming = getMaxIncomingMode();
       const webhookBase = process.env.WEBHOOK_BASE_URL;
-      if (webhookBase) {
+
+      if (maxIncoming === "wazzup" && process.env.WAZZUP_API_KEY) {
+        if (webhookBase) {
+          registerWazzupWebhook(`${webhookBase}/api/webhooks/wazzup`).catch(
+            (error) => {
+              console.error(
+                "[instrumentation] Wazzup webhook for MAX incoming failed:",
+                error,
+              );
+            },
+          );
+        } else {
+          console.warn(
+            "[instrumentation] MAX_INCOMING=wazzup requires WEBHOOK_BASE_URL for Wazzup webhooks",
+          );
+        }
+      } else if (webhookBase) {
         registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {
           console.error("[instrumentation] MAX webhook registration failed:", error);
         });
