@@ -246,18 +246,20 @@ export async function backfillAllMaxMedia(options?: {
 
   const knownChatIds = new Set<string>();
 
-  for (const conv of listConversations("max")) {
-    if (conv.externalThreadId) {
-      knownChatIds.add(conv.externalThreadId);
+  if (options?.chatIds?.length) {
+    for (const chatId of options.chatIds) {
+      if (chatId.trim()) knownChatIds.add(chatId.trim());
     }
-  }
+  } else {
+    for (const conv of listConversations("max")) {
+      if (conv.externalThreadId) {
+        knownChatIds.add(conv.externalThreadId);
+      }
+    }
 
-  for (const chatId of listMaxKnownChatIds()) {
-    knownChatIds.add(chatId);
-  }
-
-  for (const chatId of options?.chatIds ?? []) {
-    if (chatId.trim()) knownChatIds.add(chatId.trim());
+    for (const chatId of listMaxKnownChatIds()) {
+      knownChatIds.add(chatId);
+    }
   }
 
   const synced: Awaited<ReturnType<typeof backfillMaxChatMedia>>[] = [];
