@@ -7,11 +7,17 @@ export async function register() {
       setTelegramWebhook,
       startTelegramUserListener,
     } = await import("@/lib/integrations/telegram");
-    const { isMaxConfigured, registerMaxWebhook } = await import(
-      "@/lib/integrations/max",
+    const { getMaxMode, isMaxConfigured, registerMaxWebhook } = await import(
+      "@/lib/integrations/max-channel",
     );
     const { startMaxPollingListener } = await import(
       "@/lib/integrations/max-polling",
+    );
+    const { startMaxUserListener } = await import(
+      "@/lib/integrations/max-user",
+    );
+    const { startMaxUserPollingListener } = await import(
+      "@/lib/integrations/max-user-polling",
     );
     const { startTelegramPollingListener } = await import(
       "@/lib/integrations/telegram-polling",
@@ -64,13 +70,23 @@ export async function register() {
         console.info(`[instrumentation] Merged ${merged} duplicate MAX dialogs`);
       }
 
-      const webhookBase = process.env.WEBHOOK_BASE_URL;
-      if (webhookBase) {
-        registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {
-          console.error("[instrumentation] MAX webhook registration failed:", error);
+      if (getMaxMode() === "user") {
+        startMaxUserListener().catch((error) => {
+          console.error("[instrumentation] MAX user listener failed:", error);
         });
+        startMaxUserPollingListener();
       } else {
-        startMaxPollingListener();
+        const webhookBase = process.env.WEBHOOK_BASE_URL;
+        if (webhookBase) {
+          registerMaxWebhook(`${webhookBase}/api/webhooks/max`).catch((error) => {
+            console.error(
+              "[instrumentation] MAX webhook registration failed:",
+              error,
+            );
+          });
+        } else {
+          startMaxPollingListener();
+        }
       }
     }
   }

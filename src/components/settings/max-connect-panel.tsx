@@ -13,11 +13,12 @@ interface MaxProfile {
 interface MaxStatus {
   configured: boolean;
   connected: boolean;
-  mode: "webhook" | "polling";
+  mode: "webhook" | "polling" | "user";
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
   webhooks?: { url: string }[];
+  transport?: "bot-api" | "user-account";
 }
 
 export function MaxConnectPanel() {
@@ -40,6 +41,7 @@ export function MaxConnectPanel() {
         error: data.max?.error ?? null,
         webhookBaseUrl: data.webhookBaseUrl ?? null,
         webhooks: data.max?.webhooks ?? [],
+        transport: data.max?.transport,
       });
     } catch {
       setError("Не удалось загрузить статус MAX");
@@ -172,48 +174,56 @@ export function MaxConnectPanel() {
               <p className="text-muted-foreground">@{status.profile.username}</p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              Режим: {status.mode === "webhook" ? "Webhook" : "Polling (без HTTPS)"}
+              Режим:{" "}
+              {status.mode === "user"
+                ? "Аккаунт компании"
+                : status.mode === "webhook"
+                  ? "Webhook"
+                  : "Polling (без HTTPS)"}
             </p>
           </div>
-          <Button
-            variant="default"
-            size="sm"
-            disabled={actionLoading}
-            onClick={handleSyncHistory}
-          >
-            {actionLoading ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Загрузка истории…
-              </>
-            ) : (
-              "Загрузить историю переписок MAX"
-            )}
-          </Button>
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-            <p className="font-medium text-amber-900 dark:text-amber-100">
-              Голосовые сообщения MAX (удержание кнопки записи)
+          {status.mode !== "user" && (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={actionLoading}
+                onClick={handleSyncHistory}
+              >
+                {actionLoading ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Загрузка истории…
+                  </>
+                ) : (
+                  "Загрузить историю переписок MAX"
+                )}
+              </Button>
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="font-medium text-amber-900 dark:text-amber-100">
+                  Голосовые через бота MAX
+                </p>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                  Bot API не передаёт нативные голосовые (удержание кнопки
+                  записи). Для голосовых подключите{" "}
+                  <strong>аккаунт компании</strong> в разделе выше — без Wazzup.
+                </p>
+              </div>
+            </>
+          )}
+          {status.mode === "user" && (
+            <p className="text-xs text-muted-foreground">
+              Голосовые и все медиа приходят через аккаунт компании.
             </p>
-            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              Через Bot API они <strong>не передаются ботам</strong> — MAX не
-              отдаёт их ни в webhook, ни в истории сообщений. HubDesk получает
-              текст, фото, видео и файлы, но не нативные голосовые. Это
-              ограничение платформы, не ошибка интеграции.
+          )}
+          {status.mode !== "user" && (
+            <p className="text-xs text-muted-foreground">
+              Загружает историю из MAX API для всех известных диалогов. Чтобы
+              подтянуть <strong>всех</strong> клиентов, которые писали раньше
+              через Wazzup, добавьте <code>WAZZUP_API_KEY</code> в{" "}
+              <code>.env.local</code>.
             </p>
-            <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-              Варианты: попросить клиента отправить аудио как{" "}
-              <strong>файл</strong> (не голосовое); или подключить{" "}
-              <strong>MAX через Wazzup</strong> (живой аккаунт, не бот) — там
-              голосовые приходят как MP3.
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Загружает историю из MAX API для всех известных диалогов. Чтобы
-            подтянуть <strong>всех</strong> клиентов, которые писали раньше
-            через Wazzup, добавьте <code>WAZZUP_API_KEY</code> в{" "}
-            <code>.env.local</code> (API-ключ из личного кабинета Wazzup →
-            Интеграция → API).
-          </p>
+          )}
         </div>
       ) : status?.configured ? (
         <p className="text-sm text-destructive">

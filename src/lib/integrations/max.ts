@@ -11,8 +11,13 @@ export function getMaxApiBase(): string {
   return process.env.MAX_API_BASE_URL ?? DEFAULT_MAX_API;
 }
 
-export function isMaxConfigured(): boolean {
+export function isMaxBotConfigured(): boolean {
   return Boolean(process.env.MAX_BOT_TOKEN);
+}
+
+/** @deprecated use isMaxBotConfigured or max-channel.isMaxConfigured */
+export function isMaxConfigured(): boolean {
+  return isMaxBotConfigured();
 }
 
 export function getMaxBotToken(): string | null {

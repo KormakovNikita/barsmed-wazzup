@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MaxConnectForm } from "@/components/settings/max-connect-form";
 import { MaxConnectPanel } from "@/components/settings/max-connect-panel";
 import { TelegramConnectForm } from "@/components/settings/telegram-connect-form";
 import { TelegramConnectPanel } from "@/components/settings/telegram-connect-panel";
@@ -37,7 +38,23 @@ export default function IntegrationsSettingsPage() {
         </div>
       </details>
 
-      <MaxConnectPanel />
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">MAX — аккаунт компании</h2>
+        <p className="text-sm text-muted-foreground">
+          Клиенты пишут в ваш рабочий MAX (не в бота). Голосовые сообщения
+          приходят напрямую — без Wazzup.
+        </p>
+        <MaxConnectForm />
+      </section>
+
+      <details className="rounded-lg border p-4 text-sm">
+        <summary className="cursor-pointer font-medium">
+          MAX-бот (business.max.ru) — если клиенты пишут именно боту
+        </summary>
+        <div className="mt-3">
+          <MaxConnectPanel />
+        </div>
+      </details>
     </div>
   );
 }
