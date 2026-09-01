@@ -80,7 +80,9 @@ export function InboxApp() {
     try {
       const params =
         activeChannel !== "all" ? `?channel=${activeChannel}` : "";
-      const res = await fetch(`/api/conversations${params}`);
+      const res = await fetch(`/api/conversations${params}`, {
+        signal: AbortSignal.timeout(15000),
+      });
       if (!res.ok) {
         throw new Error(`Не удалось загрузить диалоги (${res.status})`);
       }
@@ -133,33 +135,15 @@ export function InboxApp() {
 
   useEffect(() => {
     const interval = setInterval(async () => {
-      const shouldPoll =
-        (integrationStatus?.telegram.configured &&
-          (integrationStatus.telegram.mode === "polling" ||
-            integrationStatus.telegram.mode === "user")) ||
-        (integrationStatus?.max.configured &&
-          integrationStatus.max.mode === "polling");
-
-      if (shouldPoll) {
-        await fetch("/api/integrations/poll", { method: "POST" });
-      }
-
-      // Refresh even when poll returns 0 — colleagues may send from another browser
-      // while server-side MAX polling already consumed those updates.
+      // Server-side listeners update the DB; UI only needs to refresh the list.
       await fetchConversations();
       if (selectedId) {
         await fetchConversationDetail(selectedId, { silent: true });
       }
-
       fetchStats();
     }, 5000);
     return () => clearInterval(interval);
-  }, [
-    fetchConversations,
-    fetchConversationDetail,
-    selectedId,
-    integrationStatus,
-  ]);
+  }, [fetchConversations, fetchConversationDetail, selectedId]);
 
   async function handleSelect(id: string) {
     selectedIdRef.current = id;

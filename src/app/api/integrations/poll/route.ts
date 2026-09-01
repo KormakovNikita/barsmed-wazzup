@@ -7,8 +7,11 @@ import { getTelegramMode, pollTelegramUpdates } from "@/lib/integrations/telegra
 import { processIncomingMessage } from "@/lib/store";
 
 let telegramOffset: number | undefined;
+let pollRunning = false;
 
-export async function POST() {
+async function runPoll(): Promise<{
+  processed: { channel: string; conversationId?: string; created?: boolean }[];
+}> {
   const processed: {
     channel: string;
     conversationId?: string;
@@ -60,9 +63,37 @@ export async function POST() {
     });
   }
 
-  return NextResponse.json({
-    ok: true,
-    processed: processed.length,
-    events: processed,
-  });
+  return { processed };
+}
+
+export async function POST() {
+  if (pollRunning) {
+    return NextResponse.json({ ok: true, processed: 0, skipped: true });
+  }
+
+  pollRunning = true;
+
+  try {
+    const timeoutMs = Number(process.env.INTEGRATIONS_POLL_TIMEOUT_MS ?? 8000);
+    let timedOut = false;
+
+    const result = await Promise.race([
+      runPoll(),
+      new Promise<{ processed: [] }>((resolve) => {
+        setTimeout(() => {
+          timedOut = true;
+          resolve({ processed: [] });
+        }, timeoutMs);
+      }),
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      processed: result.processed.length,
+      events: result.processed,
+      timedOut,
+    });
+  } finally {
+    pollRunning = false;
+  }
 }

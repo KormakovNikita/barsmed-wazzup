@@ -9,6 +9,9 @@ import { processTelegramUserMessage } from "@/lib/integrations/telegram-user/mes
 let listenerStarted = false;
 let syncing = false;
 let initialSyncDone = false;
+let lastLightSyncAt = 0;
+
+const LIGHT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function drainTelegramUserUpdates(): Promise<
   { conversationId: string; created: boolean }[]
@@ -20,6 +23,15 @@ export async function drainTelegramUserUpdates(): Promise<
   }
 
   if (syncing) return [];
+
+  // Real-time listener handles new messages; avoid heavy history sync every tick.
+  if (initialSyncDone) {
+    const now = Date.now();
+    if (now - lastLightSyncAt < LIGHT_SYNC_INTERVAL_MS) {
+      return [];
+    }
+  }
+
   syncing = true;
 
   const events: { conversationId: string; created: boolean }[] = [];
@@ -31,9 +43,10 @@ export async function drainTelegramUserUpdates(): Promise<
       return [];
     }
 
-    const limit = initialSyncDone ? 30 : 50;
+    const limit = initialSyncDone ? 5 : 20;
+    const perDialogLimit = initialSyncDone ? 1 : 8;
+
     const dialogs = await client.getDialogs({ limit });
-    const perDialogLimit = initialSyncDone ? 3 : 15;
 
     for (const dialog of dialogs) {
       const entity = dialog.entity;
@@ -50,6 +63,7 @@ export async function drainTelegramUserUpdates(): Promise<
     }
 
     initialSyncDone = true;
+    lastLightSyncAt = Date.now();
   } catch (error) {
     console.error("[telegram-user-polling] sync failed:", error);
     await restartTelegramUserListener();
