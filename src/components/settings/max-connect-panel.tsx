@@ -192,9 +192,9 @@ export function MaxConnectPanel() {
               если платформа не отдаёт вложение, сообщение не появится.
             </p>
             <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-              Для нативных голосовых подключите{" "}
-              <strong>MAX Proxy</strong> ниже — собственный прокси HubDesk без
-              Wazzup. Также работает аудио, отправленное как файл.
+              Работает только через бота — личный аккаунт MAX не нужен. Если
+              клиенту нужно передать аудио, попросите отправить его{" "}
+              <strong>как файл</strong>, а не голосовым (удержание кнопки).
             </p>
           </div>
           <p className="text-xs text-muted-foreground">

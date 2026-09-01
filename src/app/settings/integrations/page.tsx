@@ -41,6 +41,7 @@ export default function IntegrationsSettingsPage() {
       <MaxConnectPanel />
 
       <section className="space-y-3">
+        <h2 className="text-lg font-semibold">MAX — голосовые сообщения</h2>
         <MaxProxyPanel />
       </section>
     </div>
