@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Некорректный SOCKS-прокси. Формат: socks5://user:pass@host:1080",
+          "Некорректный прокси. SOCKS5: socks5://user:pass@host:1080 или MTProxy: ссылка t.me/proxy?...",
       },
       { status: 400 },
     );

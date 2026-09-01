@@ -1,9 +1,53 @@
 import type { ProxyInterface } from "teleproto/network/connection/TCPMTProxy";
 import { getSetting } from "@/lib/settings-store";
 
+function parseMtProxyLink(raw: string): ProxyInterface | null {
+  const trimmed = raw.trim();
+
+  // tg://proxy?server=...&port=...&secret=...
+  // https://t.me/proxy?server=...&port=...&secret=...
+  if (trimmed.includes("proxy?") || trimmed.startsWith("tg://")) {
+    try {
+      const url = trimmed.startsWith("tg://")
+        ? new URL(trimmed.replace("tg://", "https://"))
+        : new URL(trimmed);
+      const server = url.searchParams.get("server");
+      const port = url.searchParams.get("port");
+      const secret = url.searchParams.get("secret");
+      if (!server || !port || !secret) return null;
+      return {
+        MTProxy: true,
+        ip: server,
+        port: Number(port),
+        secret,
+        timeout: 60,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // mtproxy://host:port:secret
+  const mtMatch = trimmed.match(/^mtproxy:\/\/([^:]+):(\d+):(.+)$/i);
+  if (mtMatch) {
+    return {
+      MTProxy: true,
+      ip: mtMatch[1],
+      port: Number(mtMatch[2]),
+      secret: mtMatch[3],
+      timeout: 60,
+    };
+  }
+
+  return null;
+}
+
 export function parseTelegramProxyUrl(raw: string): ProxyInterface | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
+
+  const mtProxy = parseMtProxyLink(trimmed);
+  if (mtProxy) return mtProxy;
 
   try {
     const url = new URL(trimmed);
@@ -14,8 +58,8 @@ export function parseTelegramProxyUrl(raw: string): ProxyInterface | null {
     const proxy: ProxyInterface = {
       socksType,
       ip: url.hostname,
-      port: url.port ? Number(url.port) : socksType === 5 ? 1080 : 1080,
-      timeout: 15,
+      port: url.port ? Number(url.port) : 1080,
+      timeout: 60,
     };
 
     if (url.username) {
@@ -27,7 +71,6 @@ export function parseTelegramProxyUrl(raw: string): ProxyInterface | null {
 
     return proxy;
   } catch {
-    // host:port fallback
     const match = trimmed.match(
       /^(?:socks5?:\/\/)?(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$/i,
     );
@@ -38,7 +81,7 @@ export function parseTelegramProxyUrl(raw: string): ProxyInterface | null {
       socksType: trimmed.toLowerCase().includes("socks4") ? 4 : 5,
       ip: host,
       port: Number(port),
-      timeout: 15,
+      timeout: 60,
       ...(user ? { username: user, password: pass ?? "" } : {}),
     };
   }
@@ -62,6 +105,10 @@ export function getTelegramClientOptions() {
 }
 
 export function maskProxyUrl(raw: string): string {
+  const mt = parseMtProxyLink(raw);
+  if (mt && "secret" in mt) {
+    return raw.replace(/secret=[^&]+/, "secret=****");
+  }
   try {
     const url = new URL(raw);
     if (url.password) url.password = "****";

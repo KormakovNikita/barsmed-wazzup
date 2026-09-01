@@ -240,16 +240,15 @@ export function TelegramConnectForm() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="proxy">SOCKS5 прокси (для сервера в РФ)</Label>
+            <Label htmlFor="proxy">Прокси для сервера (SOCKS5 или MTProxy)</Label>
             <Input
               id="proxy"
-              placeholder="socks5://user:pass@host:1080"
+              placeholder="https://t.me/proxy?server=...&port=443&secret=..."
               value={proxy}
               onChange={(e) => setProxy(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Нужен, чтобы сервер HubDesk достучался до Telegram и показал QR.
-              На телефоне VPN не нужен.
+              MTProxy: вставьте ссылку из t.me/proxy. SOCKS5: socks5://user:pass@host:port
             </p>
           </div>
           <Button
