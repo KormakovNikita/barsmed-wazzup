@@ -143,6 +143,8 @@ export interface OutboundMessagePayload {
   externalThreadId: string;
   content: string;
   attachments?: OutboundAttachmentPayload[];
+  /** Public URLs for saved attachments (Wazzup contentUri) */
+  attachmentUrls?: string[];
   replyToChannelMessageId?: string;
   /** MAX: dialog chat_id (preferred for delivery) */
   maxChatId?: string;

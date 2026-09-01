@@ -24,7 +24,7 @@ interface MaxStatus {
   configured: boolean;
   connected: boolean;
   incomingMode?: "bot" | "wazzup";
-  mode: "webhook" | "polling" | "hybrid" | "hybrid-polling";
+  mode: "webhook" | "polling" | "hybrid" | "hybrid-polling" | "wazzup";
   profile: MaxProfile | null;
   error?: string | null;
   webhookBaseUrl?: string | null;
@@ -74,7 +74,9 @@ export function MaxConnectPanel() {
       const res = await fetch("/api/integrations/max/sync-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "max" }),
+        body: JSON.stringify({
+          source: status?.incomingMode === "wazzup" ? "wazzup" : "max",
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации");
@@ -181,11 +183,7 @@ export function MaxConnectPanel() {
             <p className="mt-1 text-xs text-muted-foreground">
               Режим входящих:{" "}
               {status.incomingMode === "wazzup"
-                ? status.mode === "hybrid" || status.mode === "hybrid-polling"
-                  ? status.mode === "hybrid-polling"
-                    ? "Bot API polling + Wazzup (голосовые)"
-                    : "Bot API webhook + Wazzup (голосовые)"
-                  : "Bot API polling + Wazzup"
+                ? "Wazzup (текст, медиа, голосовые)"
                 : status.mode === "webhook"
                   ? "Bot API webhook"
                   : "Bot API polling"}
@@ -214,12 +212,13 @@ export function MaxConnectPanel() {
           </Button>
           <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/30">
             <p className="font-medium text-sky-950 dark:text-sky-100">
-              Голосовые на бота MAX
+              MAX через Wazzup
             </p>
             <p className="mt-1 text-xs text-sky-900 dark:text-sky-200">
-              Bot API MAX не отдаёт нативные голосовые ботам. Подключите канал{" "}
-              <strong>maxbot</strong> в Wazzup и задайте в{" "}
-              <code>.env.local</code>:
+              Все сообщения (текст, фото, видео, файлы, голосовые) приходят и
+              отправляются через Wazzup. Подключите канал{" "}
+              <strong>max</strong> или <strong>maxbot</strong> в личном кабинете
+              Wazzup:
             </p>
             <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-xs">
               MAX_INCOMING=wazzup{"\n"}
@@ -227,14 +226,13 @@ export function MaxConnectPanel() {
               WAZZUP_WEBHOOK_BASE_URL=http://IP:3000
             </pre>
             <p className="mt-2 text-xs text-sky-900 dark:text-sky-200">
-              Текст и медиа приходят через <strong>Bot API</strong>, голосовые —
-              дополнительно через Wazzup webhook. Ответы отправляются через{" "}
-              <strong>MAX_BOT_TOKEN</strong>.
+              Bot API MAX (<code>MAX_BOT_TOKEN</code>) в этом режиме не нужен —
+              один токен бота не может работать в двух приложениях одновременно.
             </p>
             {status.incomingMode === "wazzup" && !status.wazzupRelay?.connected && (
               <p className="mt-2 text-xs text-destructive">
                 {status.wazzupRelay?.error ??
-                  "Wazzup relay не подключён — проверьте WAZZUP_API_KEY и канал maxbot"}
+                  "Wazzup не подключён — проверьте WAZZUP_API_KEY и канал MAX"}
               </p>
             )}
           </div>
@@ -257,8 +255,33 @@ export function MaxConnectPanel() {
         </div>
       ) : status?.configured ? (
         <p className="text-sm text-destructive">
-          Токен задан, но бот не отвечает: {status.error ?? "проверьте MAX_BOT_TOKEN"}
+          {status.incomingMode === "wazzup"
+            ? `Wazzup не подключён: ${status.wazzupRelay?.error ?? status.error ?? "проверьте WAZZUP_API_KEY"}`
+            : `Токен задан, но бот не отвечает: ${status.error ?? "проверьте MAX_BOT_TOKEN"}`}
         </p>
+      ) : status?.incomingMode === "wazzup" ? (
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+          <li>
+            Подключите канал MAX в{" "}
+            <a
+              className="text-primary underline"
+              href="https://wazzup24.ru"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Wazzup
+            </a>
+          </li>
+          <li>
+            В <code className="text-xs">/opt/hubdesk/.env.local</code> задайте:
+            <pre className="mt-1 overflow-x-auto rounded bg-background p-2 text-xs">
+              MAX_INCOMING=wazzup{"\n"}
+              WAZZUP_API_KEY=ваш_ключ{"\n"}
+              WAZZUP_WEBHOOK_BASE_URL=http://IP:3000
+            </pre>
+          </li>
+          <li>Перезапустите: <code className="text-xs">docker compose restart</code></li>
+        </ol>
       ) : (
         <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
           <li>
@@ -339,10 +362,26 @@ export function MaxConnectPanel() {
           </Button>
         </div>
       ) : status?.incomingMode === "wazzup" ? (
-        <p className="text-xs text-destructive">
-          Для голосовых через Wazzup нужен HTTPS: задайте{" "}
-          <code>WEBHOOK_BASE_URL=https://ваш-домен.ru</code>
-        </p>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Webhook URL: {status.wazzupRelay?.webhookUrl ?? `${status.webhookBaseUrl ?? "http://IP:3000"}/api/webhooks/wazzup`}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!status?.connected || actionLoading}
+            onClick={handleRegisterWebhook}
+          >
+            {actionLoading ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Регистрация…
+              </>
+            ) : (
+              "Зарегистрировать Wazzup webhook"
+            )}
+          </Button>
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">
           Без HTTPS (домена) HubDesk получает сообщения через polling каждые 5 сек —

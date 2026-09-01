@@ -10,6 +10,9 @@ export async function register() {
     const { isMaxConfigured, registerMaxWebhook } = await import(
       "@/lib/integrations/max",
     );
+    const { isMaxIncomingConfigured } = await import(
+      "@/lib/integrations/wazzup-max",
+    );
     const { startMaxPollingListener } = await import(
       "@/lib/integrations/max-polling",
     );
@@ -57,11 +60,14 @@ export async function register() {
       }
     }
 
-    if (isMaxConfigured()) {
+    if (isMaxIncomingConfigured()) {
       const { mergeDuplicateMaxConversations } = await import("@/lib/store");
-      const { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupWebhookBaseUrl } = await import(
-        "@/lib/integrations/wazzup-max"
-      );
+      const {
+        getMaxIncomingMode,
+        getMaxWebhookBaseUrl,
+        getWazzupWebhookBaseUrl,
+        shouldUseMaxBotIncoming,
+      } = await import("@/lib/integrations/wazzup-max");
       const merged = mergeDuplicateMaxConversations();
       if (merged > 0) {
         console.info(`[instrumentation] Merged ${merged} duplicate MAX dialogs`);
@@ -75,19 +81,20 @@ export async function register() {
         registerWazzupWebhook(`${wazzupWebhookBase}/api/webhooks/wazzup`).catch(
           (error) => {
             console.error(
-              "[instrumentation] Wazzup webhook for MAX voice failed:",
+              "[instrumentation] Wazzup webhook for MAX failed:",
               error,
             );
           },
         );
-      }
-
-      if (maxWebhookBase) {
-        registerMaxWebhook(`${maxWebhookBase}/api/webhooks/max`).catch((error) => {
-          console.error("[instrumentation] MAX webhook registration failed:", error);
-        });
-      } else {
-        startMaxPollingListener();
+        console.info("[instrumentation] MAX incoming: Wazzup-only mode");
+      } else if (shouldUseMaxBotIncoming()) {
+        if (maxWebhookBase) {
+          registerMaxWebhook(`${maxWebhookBase}/api/webhooks/max`).catch((error) => {
+            console.error("[instrumentation] MAX webhook registration failed:", error);
+          });
+        } else {
+          startMaxPollingListener();
+        }
       }
 
       if (process.env.MAX_PROXY_ENABLED === "true") {

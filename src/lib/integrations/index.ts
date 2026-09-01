@@ -16,7 +16,7 @@ import {
   sendTelegramMessage,
   type TelegramUpdate,
 } from "./telegram";
-import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, shouldMaxUsePolling } from "./wazzup-max";
+import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, isMaxIncomingConfigured, sendWazzupMaxMessage, shouldMaxUsePolling } from "./wazzup-max";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -25,7 +25,9 @@ export async function dispatchOutboundMessage(
     case "telegram":
       return sendTelegramMessage(payload);
     case "max":
-      return sendMaxMessage(payload);
+      return getMaxIncomingMode() === "wazzup"
+        ? sendWazzupMaxMessage(payload)
+        : sendMaxMessage(payload);
     default:
       return { ok: true };
   }
@@ -49,7 +51,7 @@ export async function deleteChannelMessage(params: {
 
 export function isChannelIntegrationActive(channel: Channel): boolean {
   if (channel === "telegram") return isTelegramConfigured();
-  if (channel === "max") return isMaxConfigured();
+  if (channel === "max") return isMaxIncomingConfigured();
   return false;
 }
 
@@ -82,10 +84,16 @@ export async function getIntegrationStatus() {
   const maxWebhookBase = getMaxWebhookBaseUrl();
   const wazzupWebhookBase = getWazzupWebhookBaseUrl();
   const telegram = await getTelegramStatus();
-  const maxConfigured = isMaxConfigured();
-  const maxInfo = maxConfigured ? await getMaxBotInfo() : null;
-  const maxSubs = maxConfigured ? await listMaxSubscriptions() : null;
   const maxIncoming = getMaxIncomingMode();
+  const maxConfigured = isMaxIncomingConfigured();
+  const maxInfo =
+    maxIncoming !== "wazzup" && isMaxConfigured()
+      ? await getMaxBotInfo()
+      : null;
+  const maxSubs =
+    maxIncoming !== "wazzup" && isMaxConfigured()
+      ? await listMaxSubscriptions()
+      : null;
   const wazzupMax =
     maxIncoming === "wazzup" ? await getWazzupMaxStatus() : null;
 
@@ -102,18 +110,30 @@ export async function getIntegrationStatus() {
     },
     max: {
       configured: maxConfigured,
-      connected: maxInfo?.ok ?? false,
+      connected:
+        maxIncoming === "wazzup"
+          ? (wazzupMax?.connected ?? false)
+          : (maxInfo?.ok ?? false),
       incomingMode: maxIncoming,
       mode:
         maxIncoming === "wazzup"
-          ? shouldMaxUsePolling()
-            ? "hybrid-polling"
-            : "hybrid"
+          ? "wazzup"
           : shouldMaxUsePolling()
             ? "polling"
             : "webhook",
-      profile: maxInfo?.bot ?? null,
-      error: maxInfo?.ok === false ? maxInfo.error : null,
+      profile:
+        maxIncoming === "wazzup" && wazzupMax?.channelName
+          ? {
+              userId: 0,
+              name: wazzupMax.channelName,
+            }
+          : (maxInfo?.bot ?? null),
+      error:
+        maxIncoming === "wazzup"
+          ? (wazzupMax?.error ?? null)
+          : maxInfo?.ok === false
+            ? maxInfo.error
+            : null,
       webhooks: maxSubs?.subscriptions ?? [],
       wazzupRelay: wazzupMax
         ? {

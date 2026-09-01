@@ -13,7 +13,7 @@ import {
   registerWazzupWebhook,
   setTelegramWebhook,
 } from "@/lib/integrations/telegram";
-import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupWebhookBaseUrl } from "@/lib/integrations/wazzup-max";
+import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupWebhookBaseUrl, isMaxIncomingConfigured } from "@/lib/integrations/wazzup-max";
 import { getAssignmentStrategy, getOperatorLoad } from "@/lib/assignment";
 import { listConversations, listOperators } from "@/lib/store";
 
@@ -102,13 +102,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (isMaxConfigured()) {
+    if (isMaxIncomingConfigured()) {
       if (getMaxIncomingMode() === "wazzup" && process.env.WAZZUP_API_KEY && wazzupWebhookBase) {
         results.wazzupMax = await registerWazzupWebhook(
           `${wazzupWebhookBase}/api/webhooks/wazzup`,
         );
-      }
-      if (maxWebhookBase) {
+      } else if (maxWebhookBase) {
         results.max = await registerMaxWebhook(`${maxWebhookBase}/api/webhooks/max`);
       } else {
         results.max = { ok: true };

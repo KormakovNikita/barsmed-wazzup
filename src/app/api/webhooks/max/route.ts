@@ -3,9 +3,14 @@ import {
   verifyMaxWebhookSecret,
   type MaxUpdate,
 } from "@/lib/integrations/max";
+import { getMaxIncomingMode } from "@/lib/integrations/wazzup-max";
 import { processMaxIncomingUpdate } from "@/lib/integrations/max-incoming";
 
 export async function POST(request: Request) {
+  if (getMaxIncomingMode() === "wazzup") {
+    return NextResponse.json({ ok: true, skipped: true, reason: "wazzup-only" });
+  }
+
   if (!verifyMaxWebhookSecret(request)) {
     return NextResponse.json({ error: "Invalid secret" }, { status: 403 });
   }

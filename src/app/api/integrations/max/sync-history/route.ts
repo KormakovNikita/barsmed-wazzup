@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncAllMaxHistory } from "@/lib/integrations/max-history";
+import { shouldUseMaxBotIncoming } from "@/lib/integrations/wazzup-max";
 import {
   importWazzupMaxHistory,
   isWazzupConfigured,
@@ -27,10 +28,15 @@ export async function POST(request: Request) {
     }
   }
 
-  if (source === "max" || source === "all") {
+  if ((source === "max" || source === "all") && shouldUseMaxBotIncoming()) {
     results.max = await syncAllMaxHistory({
       chatIds: body.chatIds,
     });
+  } else if (source === "max") {
+    results.max = {
+      skipped: true,
+      reason: "В режиме MAX_INCOMING=wazzup история загружается из Wazzup",
+    };
   }
 
   return NextResponse.json({ ok: true, results });

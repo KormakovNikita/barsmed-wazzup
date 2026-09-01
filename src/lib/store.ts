@@ -2,6 +2,7 @@ import { getDb, isDatabaseEmpty } from "@/lib/db";
 import { ALL_CHANNELS } from "@/lib/channels";
 import { getAssignmentStrategy, pickOperatorForAssignment } from "@/lib/assignment";
 import { dispatchOutboundMessage, deleteChannelMessage } from "@/lib/integrations";
+import { getMaxIncomingMode, getPublicAppBaseUrl } from "@/lib/integrations/wazzup-max";
 import {
   deleteMediaFile,
   mediaPreviewLabel,
@@ -1489,6 +1490,14 @@ export async function sendMessage(
           )
         : {};
 
+    const publicBase = getPublicAppBaseUrl();
+    const attachmentUrls =
+      publicBase && message.attachments?.length
+        ? message.attachments.map(
+            (attachment) => `${publicBase}/api/media/${attachment.id}`,
+          )
+        : undefined;
+
     const result = await dispatchOutboundMessage({
       channel: conversation.channel,
       externalThreadId:
@@ -1499,6 +1508,7 @@ export async function sendMessage(
       maxUserId: maxTargets.userId,
       content: trimmed,
       attachments,
+      attachmentUrls,
       replyToChannelMessageId,
     });
 
@@ -1512,7 +1522,9 @@ export async function sendMessage(
         .run(
           conversation.channel,
           conversation.channel === "max"
-            ? `max-${result.externalId}`
+            ? getMaxIncomingMode() === "wazzup"
+              ? `wazzup-max-${result.externalId}`
+              : `max-${result.externalId}`
             : result.externalId,
         );
     }

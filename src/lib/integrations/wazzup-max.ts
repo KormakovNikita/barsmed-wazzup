@@ -3,6 +3,7 @@ import type {
   IncomingAttachmentPayload,
   IncomingMessagePayload,
   MessageMediaType,
+  OutboundMessagePayload,
 } from "@/lib/types";
 import { isWazzupConfigured, findWazzupMaxChannelId } from "@/lib/integrations/wazzup-import";
 import {
@@ -72,9 +73,20 @@ export function isWazzupMaxIncomingConfigured(): boolean {
   return isWazzupConfigured() && getMaxIncomingMode() === "wazzup";
 }
 
-/** Bot API stays on in wazzup mode — Wazzup only supplements voice messages. */
+/** In wazzup mode all MAX traffic goes through Wazzup; Bot API is disabled. */
 export function shouldUseMaxBotIncoming(): boolean {
-  return true;
+  return getMaxIncomingMode() !== "wazzup";
+}
+
+export function isMaxIncomingConfigured(): boolean {
+  if (getMaxIncomingMode() === "wazzup") {
+    return isWazzupMaxIncomingConfigured();
+  }
+  return Boolean(process.env.MAX_BOT_TOKEN);
+}
+
+export function getPublicAppBaseUrl(): string | null {
+  return getWazzupWebhookBaseUrl() ?? getMaxWebhookBaseUrl();
 }
 
 export function isWazzupMaxVoiceMessage(msg: WazzupMaxWebhookMessage): boolean {
@@ -86,9 +98,7 @@ export function isWazzupMaxVoiceMessage(msg: WazzupMaxWebhookMessage): boolean {
 }
 
 export function shouldWazzupHandleMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
-  if (!isWazzupMaxMessage(msg)) return false;
-  if (getMaxIncomingMode() !== "wazzup") return true;
-  return isWazzupMaxVoiceMessage(msg);
+  return isWazzupMaxMessage(msg);
 }
 
 export function isWazzupMaxMessage(msg: WazzupMaxWebhookMessage): boolean {
@@ -316,3 +326,71 @@ export async function getWazzupMaxStatus(): Promise<{
 }
 
 export { findWazzupMaxChannelId };
+
+function resolveWazzupMaxChatType(transport: string | null | undefined): string {
+  if (transport === "maxgroup") return "maxgroup";
+  return "max";
+}
+
+export async function sendWazzupMaxMessage(
+  payload: OutboundMessagePayload & { attachmentUrls?: string[] },
+): Promise<{ ok: boolean; externalId?: string; error?: string }> {
+  if (!isWazzupConfigured()) {
+    return { ok: false, error: "WAZZUP_API_KEY не задан" };
+  }
+
+  const channelId = await findWazzupMaxChannelId();
+  if (!channelId) {
+    return {
+      ok: false,
+      error: "Не найден MAX/maxbot канал в Wazzup",
+    };
+  }
+
+  const channels = await listWazzupChannels();
+  const channel = channels.find((ch) => ch.channelId === channelId);
+  const chatType = resolveWazzupMaxChatType(channel?.transport);
+  const threadId = (payload.maxChatId ?? payload.externalThreadId).trim();
+
+  const body: Record<string, string> = {
+    channelId,
+    chatType,
+    chatId: threadId,
+  };
+
+  const attachmentUrl = payload.attachmentUrls?.[0];
+  if (attachmentUrl) {
+    body.contentUri = attachmentUrl;
+  } else if (payload.content.trim()) {
+    body.text = payload.content.trim();
+  } else {
+    return { ok: false, error: "Пустое сообщение" };
+  }
+
+  const response = await fetch("https://api.wazzup24.com/v3/message", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.WAZZUP_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = (await response.json()) as {
+    messageId?: string;
+    error?: string;
+    description?: string;
+  };
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: data.description ?? data.error ?? `Wazzup ${response.status}`,
+    };
+  }
+
+  return {
+    ok: true,
+    externalId: data.messageId,
+  };
+}
