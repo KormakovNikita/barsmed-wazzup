@@ -362,7 +362,7 @@ export async function sendWazzupMaxMessage(
   const channels = await listWazzupChannels();
   const channel = channels.find((ch) => ch.channelId === channelId);
   const chatType = resolveWazzupMaxChatType(channel?.transport);
-  const threadId = (payload.maxChatId ?? payload.externalThreadId).trim();
+  const threadId = payload.externalThreadId.trim();
 
   const body: Record<string, string> = {
     channelId,

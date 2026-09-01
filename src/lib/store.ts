@@ -1484,10 +1484,12 @@ export async function sendMessage(
   if (conversation.externalThreadId) {
     const maxTargets =
       conversation.channel === "max"
-        ? resolveMaxOutboundTargets(
-            conversation.externalThreadId,
-            conversation.contactId,
-          )
+        ? getMaxIncomingMode() === "wazzup"
+          ? { chatId: conversation.externalThreadId }
+          : resolveMaxOutboundTargets(
+              conversation.externalThreadId,
+              conversation.contactId,
+            )
         : {};
 
     const publicBase = getPublicAppBaseUrl();
