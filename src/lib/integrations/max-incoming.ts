@@ -42,6 +42,14 @@ export async function processMaxIncomingUpdate(
   if (!content.trim() && rawAttachments?.length) {
     content = maxAttachmentPreview(rawAttachments);
   }
+  const transcription = rawAttachments
+    ?.find((item) => item.type === "audio" || item.type === "voice")
+    ?.transcription?.trim();
+  if (transcription && !content.includes(transcription)) {
+    content = content.trim()
+      ? `${content}\n\n📝 ${transcription}`
+      : `📝 ${transcription}`;
+  }
   if (!content.trim()) return null;
 
   const result = processIncomingMessage({

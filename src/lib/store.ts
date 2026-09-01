@@ -936,6 +936,34 @@ export function processIncomingMessage(
       )
       .get(payload.externalMessageId, existing.id) as MessageRow | undefined;
     if (!lastMessage) return null;
+
+    if (payload.attachments?.length) {
+      const existingAttachments = loadAttachmentsForMessages([
+        lastMessage.id,
+      ]).get(lastMessage.id);
+      if (!existingAttachments?.length) {
+        const message = rowToMessage(lastMessage);
+        message.attachments = insertAttachmentsForMessage(
+          message.id,
+          existing.id,
+          payload.attachments,
+        );
+        if (payload.content.trim() && !message.content.trim()) {
+          message.content = payload.content;
+          getDb()
+            .prepare("UPDATE messages SET content = ? WHERE id = ?")
+            .run(message.content, message.id);
+        }
+        const preview = messagePreviewText(message.content, message.attachments);
+        getDb()
+          .prepare(
+            "UPDATE conversations SET last_message_preview = ?, updated_at = ?, awaiting_reply = 1 WHERE id = ?",
+          )
+          .run(preview, new Date().toISOString(), existing.id);
+        return { message, conversation: existing, created: false };
+      }
+    }
+
     return {
       message: rowToMessage(lastMessage),
       conversation: existing,

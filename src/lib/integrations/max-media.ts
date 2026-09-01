@@ -17,6 +17,8 @@ export interface MaxMessageAttachment {
   size?: number;
   /** Present on audio/voice attachments in some API responses */
   duration?: number;
+  /** MAX may return speech-to-text for audio attachments */
+  transcription?: string | null;
 }
 
 const MEDIA_TYPES = new Set(["image", "video", "audio", "voice", "file"]);

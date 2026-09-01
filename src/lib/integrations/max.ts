@@ -168,6 +168,12 @@ export async function sendMaxMessage(
   return { ok: false, error: lastError };
 }
 
+export const MAX_BOT_UPDATE_TYPES = [
+  "message_created",
+  "message_edited",
+  "bot_started",
+] as const;
+
 export async function registerMaxWebhook(
   webhookUrl: string,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -182,7 +188,7 @@ export async function registerMaxWebhook(
     headers: maxHeaders(),
     body: JSON.stringify({
       url: webhookUrl,
-      update_types: ["message_created", "bot_started"],
+      update_types: [...MAX_BOT_UPDATE_TYPES],
       secret,
     }),
   });
@@ -317,12 +323,13 @@ export function parseMaxUpdate(update: MaxUpdate) {
     };
   }
 
-  if (update.update_type !== "message_created" || !update.message?.body) {
-    return null;
-  }
-
-  const body = update.message.body;
-  const mediaAttachments =
+  if (
+    (update.update_type === "message_created" ||
+      update.update_type === "message_edited") &&
+    update.message?.body
+  ) {
+    const body = update.message.body;
+    const mediaAttachments =
     body.attachments?.filter((attachment) => {
       if (["image", "video", "audio", "voice", "file"].includes(attachment.type)) {
         return true;
@@ -396,6 +403,9 @@ export function parseMaxUpdate(update: MaxUpdate) {
     direction: "in" as const,
     replyToChannelMessageId,
   };
+  }
+
+  return null;
 }
 
 export async function pollMaxUpdates(marker?: number): Promise<{
