@@ -5,7 +5,7 @@ import type {
   MessageMediaType,
   OutboundMessagePayload,
 } from "@/lib/types";
-import { isWazzupConfigured, findWazzupMaxChannelId } from "@/lib/integrations/wazzup-import";
+import { isWazzupConfigured, findWazzupMaxChannelId, listWazzupMaxChannels } from "@/lib/integrations/wazzup-import";
 import {
   getWazzupWebhookInfo,
   listWazzupChannels,
@@ -296,11 +296,11 @@ export async function getWazzupMaxStatus(): Promise<{
     };
   }
 
-  const channels = await listWazzupChannels();
+  const channels = await listWazzupMaxChannels();
   const channelId = await findWazzupMaxChannelId();
   const channel = channels.find((ch) => ch.channelId === channelId);
 
-  if (!channelId) {
+  if (!channelId || !channel) {
     return {
       configured: true,
       connected: false,
@@ -310,6 +310,18 @@ export async function getWazzupMaxStatus(): Promise<{
       webhookUrl: null,
       error:
         "Не найден MAX/maxbot канал в Wazzup. Подключите бота MAX в личном кабинете Wazzup.",
+    };
+  }
+
+  if (channel.state !== "active") {
+    return {
+      configured: true,
+      connected: false,
+      channelId,
+      channelName: channel.name ?? channel.plainId ?? null,
+      transport: channel.transport ?? null,
+      webhookUrl: null,
+      error: `Канал Wazzup в статусе «${channel.state}». Активируйте канал MAX в личном кабинете Wazzup.`,
     };
   }
 
@@ -380,12 +392,18 @@ export async function sendWazzupMaxMessage(
     messageId?: string;
     error?: string;
     description?: string;
+    data?: Array<{ code?: string; description?: string }>;
   };
 
   if (!response.ok) {
+    const detail = data.data?.[0];
+    const friendly =
+      detail?.code === "CHANNEL_NOT_FOUND"
+        ? "Канал MAX в Wazzup не найден или заблокирован. Проверьте WAZZUP_MAX_CHANNEL_ID."
+        : detail?.description;
     return {
       ok: false,
-      error: data.description ?? data.error ?? `Wazzup ${response.status}`,
+      error: friendly ?? data.description ?? data.error ?? `Wazzup ${response.status}`,
     };
   }
 

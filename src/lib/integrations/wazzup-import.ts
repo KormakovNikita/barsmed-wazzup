@@ -22,29 +22,46 @@ interface WazzupChannel {
   transport: string;
   plainId?: string;
   state?: string;
+  name?: string;
 }
 
-export async function findWazzupMaxChannelId(): Promise<string | null> {
-  const configured = process.env.WAZZUP_MAX_CHANNEL_ID;
-  if (configured) return configured;
+function isMaxTransport(transport: string | undefined): boolean {
+  const value = transport?.toLowerCase() ?? "";
+  return value === "max" || value === "maxbot" || value === "maxgroup";
+}
 
+export async function listWazzupMaxChannels(): Promise<WazzupChannel[]> {
   const response = await fetch(`${WAZZUP_API}/v3/channels`, {
     headers: wazzupHeaders(),
     cache: "no-store",
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) return [];
 
   const data = (await response.json()) as WazzupChannel[] | { data?: WazzupChannel[] };
   const channels = Array.isArray(data) ? data : (data.data ?? []);
+  return channels.filter((ch) => isMaxTransport(ch.transport));
+}
 
-  const maxChannel = channels.find(
-    (ch) =>
-      (ch.transport === "max" || ch.transport === "maxbot") &&
-      ch.state === "active",
-  );
+export async function findWazzupMaxChannelId(): Promise<string | null> {
+  const channels = await listWazzupMaxChannels();
+  if (!channels.length) return null;
 
-  return maxChannel?.channelId ?? channels.find((ch) => ch.transport === "max" || ch.transport === "maxbot")?.channelId ?? null;
+  const configured = process.env.WAZZUP_MAX_CHANNEL_ID?.trim();
+  if (configured) {
+    const configuredChannel = channels.find((ch) => ch.channelId === configured);
+    if (configuredChannel?.state === "active") {
+      return configuredChannel.channelId;
+    }
+    console.warn(
+      `[wazzup-max] configured channel ${configured} is ${configuredChannel?.state ?? "missing"}, using active fallback`,
+    );
+  }
+
+  const active = channels.find((ch) => ch.state === "active");
+  if (active) return active.channelId;
+
+  return channels[0]?.channelId ?? null;
 }
 
 async function createMessagesDump(
