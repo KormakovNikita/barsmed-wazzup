@@ -69,6 +69,21 @@ CREATE TABLE IF NOT EXISTS max_known_chats (
   discovered_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  mime_type TEXT,
+  file_name TEXT,
+  file_size INTEGER,
+  storage_path TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_attachments_message
+  ON message_attachments(message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 

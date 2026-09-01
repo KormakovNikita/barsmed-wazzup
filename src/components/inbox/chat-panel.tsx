@@ -3,18 +3,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Check, CheckCheck, Send, Zap } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  MoreVertical,
+  Paperclip,
+  Send,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
-import type { ConversationDetail, Message } from "@/lib/types";
+import type { ConversationDetail, Message, MessageAttachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
   conversation: ConversationDetail | null;
   loading: boolean;
-  onSendMessage: (content: string) => Promise<void>;
+  onSendMessage: (content: string, file?: File) => Promise<void>;
+  onDeleteMessage: (messageId: string, revoke: boolean) => Promise<void>;
   onSimulateIncoming: () => Promise<void>;
   sendError?: string | null;
 }
@@ -32,16 +47,71 @@ function MessageStatusIcon({ status }: { status: Message["status"] }) {
   return null;
 }
 
+function AttachmentView({
+  attachment,
+  isOut,
+}: {
+  attachment: MessageAttachment;
+  isOut: boolean;
+}) {
+  const url = attachment.url;
+
+  if (attachment.type === "image" || attachment.type === "sticker") {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={attachment.fileName ?? "Изображение"}
+          className="max-h-64 max-w-full rounded-lg object-contain"
+        />
+      </a>
+    );
+  }
+
+  if (attachment.type === "video") {
+    return (
+      <video
+        src={url}
+        controls
+        className="max-h-64 max-w-full rounded-lg"
+        preload="metadata"
+      />
+    );
+  }
+
+  if (attachment.type === "audio" || attachment.type === "voice") {
+    return <audio src={url} controls className="w-full min-w-[220px]" preload="metadata" />;
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline",
+        isOut ? "text-primary-foreground" : "text-foreground",
+      )}
+    >
+      📎 {attachment.fileName ?? "Скачать файл"}
+    </a>
+  );
+}
+
 export function ChatPanel({
   conversation,
   loading,
   onSendMessage,
+  onDeleteMessage,
   onSimulateIncoming,
   sendError,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messageCountRef = useRef(0);
   const conversationIdRef = useRef<string | null>(null);
 
@@ -62,6 +132,7 @@ export function ChatPanel({
     if (conversation?.id !== conversationIdRef.current) {
       conversationIdRef.current = conversation?.id ?? null;
       messageCountRef.current = conversation?.messages.length ?? 0;
+      setSelectedFile(null);
       requestAnimationFrame(() => scrollMessagesToBottom("auto"));
       return;
     }
@@ -74,11 +145,13 @@ export function ChatPanel({
   }, [conversation?.id, conversation?.messages, scrollMessagesToBottom]);
 
   async function handleSend() {
-    if (!draft.trim() || sending) return;
+    if ((!draft.trim() && !selectedFile) || sending) return;
     setSending(true);
     try {
-      await onSendMessage(draft);
+      await onSendMessage(draft, selectedFile ?? undefined);
       setDraft("");
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } finally {
       setSending(false);
     }
@@ -115,6 +188,8 @@ export function ChatPanel({
     );
   }
 
+  const canDeleteInTelegram = conversation.channel === "telegram";
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 items-center justify-between border-b px-4 py-3">
@@ -136,39 +211,76 @@ export function ChatPanel({
       <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="space-y-3 px-4 py-4">
-          {conversation.messages.map((msg) => {
-            const isOut = msg.direction === "out";
-            return (
-              <div
-                key={msg.id}
-                className={cn("flex", isOut ? "justify-end" : "justify-start")}
-              >
+            {conversation.messages.map((msg) => {
+              const isOut = msg.direction === "out";
+              return (
                 <div
-                  className={cn(
-                    "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
-                    isOut
-                      ? "rounded-br-md bg-primary text-primary-foreground"
-                      : "rounded-bl-md bg-muted",
-                  )}
+                  key={msg.id}
+                  className={cn("group flex items-end gap-1", isOut ? "justify-end" : "justify-start")}
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                   <div
                     className={cn(
-                      "mt-1 flex items-center justify-end gap-1 text-[10px]",
+                      "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
                       isOut
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground",
+                        ? "rounded-br-md bg-primary text-primary-foreground"
+                        : "rounded-bl-md bg-muted",
                     )}
                   >
-                    <span>
-                      {format(new Date(msg.createdAt), "HH:mm", { locale: ru })}
-                    </span>
-                    {isOut && <MessageStatusIcon status={msg.status} />}
+                    {msg.attachments?.map((attachment) => (
+                      <div key={attachment.id} className="mb-2 last:mb-0">
+                        <AttachmentView attachment={attachment} isOut={isOut} />
+                      </div>
+                    ))}
+                    {msg.content.trim() && (
+                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    )}
+                    <div
+                      className={cn(
+                        "mt-1 flex items-center justify-end gap-1 text-[10px]",
+                        isOut
+                          ? "text-primary-foreground/70"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      <span>
+                        {format(new Date(msg.createdAt), "HH:mm", { locale: ru })}
+                      </span>
+                      {isOut && <MessageStatusIcon status={msg.status} />}
+                    </div>
                   </div>
+
+                  {canDeleteInTelegram && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                          />
+                        }
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align={isOut ? "end" : "start"}>
+                        <DropdownMenuItem
+                          onClick={() => onDeleteMessage(msg.id, false)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Удалить у меня
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => onDeleteMessage(msg.id, true)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Удалить у всех
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </div>
         </ScrollArea>
       </div>
@@ -177,7 +289,41 @@ export function ChatPanel({
         {sendError && (
           <p className="mb-2 text-xs text-destructive">{sendError}</p>
         )}
+        {selectedFile && (
+          <div className="mb-2 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+            <Paperclip className="h-4 w-4 shrink-0" />
+            <span className="truncate">{selectedFile.name}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-7 px-2"
+              onClick={() => {
+                setSelectedFile(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+            >
+              Убрать
+            </Button>
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip"
+            onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0 self-end"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <Textarea
             placeholder="Напишите сообщение..."
             value={draft}
@@ -189,7 +335,7 @@ export function ChatPanel({
           <Button
             size="icon"
             onClick={handleSend}
-            disabled={!draft.trim() || sending}
+            disabled={(!draft.trim() && !selectedFile) || sending}
             className="shrink-0 self-end"
           >
             <Send className="h-4 w-4" />

@@ -1,16 +1,26 @@
 import { getDb, isDatabaseEmpty } from "@/lib/db";
 import { ALL_CHANNELS } from "@/lib/channels";
 import { getAssignmentStrategy, pickOperatorForAssignment } from "@/lib/assignment";
-import { dispatchOutboundMessage } from "@/lib/integrations";
+import { dispatchOutboundMessage, deleteChannelMessage } from "@/lib/integrations";
+import {
+  deleteMediaFile,
+  mediaPreviewLabel,
+  saveMediaBuffer,
+  toMessageAttachment,
+} from "@/lib/media-storage";
 import type {
   Channel,
   Contact,
   Conversation,
   ConversationDetail,
   DealStage,
+  IncomingAttachmentPayload,
   IncomingMessagePayload,
   Message,
+  MessageAttachment,
+  MessageMediaType,
   Operator,
+  OutboundAttachmentPayload,
 } from "@/lib/types";
 
 type ContactRow = {
@@ -48,6 +58,19 @@ type MessageRow = {
   created_at: string;
 };
 
+type AttachmentRow = {
+  id: string;
+  message_id: string;
+  type: MessageMediaType;
+  mime_type: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  storage_path: string;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+};
+
 function rowToContact(row: ContactRow): Contact {
   return {
     id: row.id,
@@ -78,7 +101,103 @@ function rowToConversation(row: ConversationRow): Conversation {
   };
 }
 
-function rowToMessage(row: MessageRow): Message {
+function rowToAttachment(row: AttachmentRow): MessageAttachment {
+  return toMessageAttachment({
+    id: row.id,
+    messageId: row.message_id,
+    type: row.type,
+    mimeType: row.mime_type ?? "application/octet-stream",
+    fileName: row.file_name ?? undefined,
+    fileSize: row.file_size ?? undefined,
+    storagePath: row.storage_path,
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+  });
+}
+
+function loadAttachmentsForMessages(messageIds: string[]): Map<string, MessageAttachment[]> {
+  const map = new Map<string, MessageAttachment[]>();
+  if (!messageIds.length) return map;
+
+  const placeholders = messageIds.map(() => "?").join(", ");
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM message_attachments WHERE message_id IN (${placeholders}) ORDER BY created_at ASC`,
+    )
+    .all(...messageIds) as AttachmentRow[];
+
+  for (const row of rows) {
+    const list = map.get(row.message_id) ?? [];
+    list.push(rowToAttachment(row));
+    map.set(row.message_id, list);
+  }
+  return map;
+}
+
+function insertAttachmentsForMessage(
+  messageId: string,
+  conversationId: string,
+  attachments: IncomingAttachmentPayload[] | OutboundAttachmentPayload[],
+): MessageAttachment[] {
+  const saved: MessageAttachment[] = [];
+  for (const attachment of attachments) {
+    const { attachmentId, storagePath } = saveMediaBuffer({
+      conversationId,
+      buffer: attachment.buffer,
+      mimeType: attachment.mimeType,
+      type: attachment.type,
+      fileName: attachment.fileName,
+    });
+
+    getDb()
+      .prepare(
+        `INSERT INTO message_attachments (
+           id, message_id, type, mime_type, file_name, file_size, storage_path, width, height, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        attachmentId,
+        messageId,
+        attachment.type,
+        attachment.mimeType,
+        attachment.fileName ?? null,
+        ("fileSize" in attachment ? attachment.fileSize : undefined) ??
+          attachment.buffer.length,
+        storagePath,
+        "width" in attachment ? attachment.width ?? null : null,
+        "height" in attachment ? attachment.height ?? null : null,
+        new Date().toISOString(),
+      );
+
+    saved.push(
+      toMessageAttachment({
+        id: attachmentId,
+        messageId,
+        type: attachment.type,
+        mimeType: attachment.mimeType,
+        fileName: attachment.fileName,
+        fileSize:
+          ("fileSize" in attachment ? attachment.fileSize : undefined) ??
+          attachment.buffer.length,
+        storagePath,
+        width: "width" in attachment ? attachment.width : undefined,
+        height: "height" in attachment ? attachment.height : undefined,
+      }),
+    );
+  }
+  return saved;
+}
+
+function messagePreviewText(content: string, attachments?: MessageAttachment[]): string {
+  if (content.trim()) return content.trim();
+  if (attachments?.length) {
+    const first = attachments[0];
+    return mediaPreviewLabel(first.type, first.fileName);
+  }
+  return "";
+}
+
+function rowToMessage(row: MessageRow, attachments?: MessageAttachment[]): Message {
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -88,6 +207,7 @@ function rowToMessage(row: MessageRow): Message {
     operatorId: row.operator_id ?? undefined,
     externalId: row.external_id ?? undefined,
     createdAt: row.created_at,
+    attachments,
   };
 }
 
@@ -433,10 +553,14 @@ export function getConversationDetail(id: string): ConversationDetail | null {
     )
     .all(id) as MessageRow[];
 
+  const attachmentMap = loadAttachmentsForMessages(messageRows.map((row) => row.id));
+
   return {
     ...conversation,
     contact,
-    messages: messageRows.map(rowToMessage),
+    messages: messageRows.map((row) =>
+      rowToMessage(row, attachmentMap.get(row.id)),
+    ),
     assignedOperator: conversation.assignedTo
       ? getOperator(conversation.assignedTo)
       : undefined,
@@ -614,11 +738,15 @@ export function processIncomingMessage(
     content: payload.content,
     direction: isOutbound ? "out" : "in",
     status: isOutbound ? "delivered" : "delivered",
-    externalId: payload.externalMessageId.replace(/^max-/, "").startsWith("mid.")
-      ? payload.externalMessageId.replace(/^max-/, "")
-      : payload.externalMessageId,
+    externalId:
+      payload.channelMessageId ??
+      (payload.externalMessageId.replace(/^max-/, "").startsWith("mid.")
+        ? payload.externalMessageId.replace(/^max-/, "")
+        : payload.externalMessageId),
     createdAt: new Date().toISOString(),
   };
+
+  let savedAttachments: MessageAttachment[] | undefined;
 
   const tx = getDb().transaction(() => {
     getDb()
@@ -627,13 +755,22 @@ export function processIncomingMessage(
       )
       .run(payload.channel, payload.externalMessageId);
     insertMessage(message);
+    if (payload.attachments?.length) {
+      savedAttachments = insertAttachmentsForMessage(
+        message.id,
+        conversation!.id,
+        payload.attachments,
+      );
+      message.attachments = savedAttachments;
+    }
+    const preview = messagePreviewText(payload.content, savedAttachments);
     getDb()
       .prepare(
         isOutbound
           ? `UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?`
           : `UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = unread_count + 1 WHERE id = ?`,
       )
-      .run(payload.content, message.createdAt, conversation!.id);
+      .run(preview, message.createdAt, conversation!.id);
   });
   tx();
 
@@ -827,11 +964,13 @@ export async function sendMessage(
   conversationId: string,
   content: string,
   operatorId?: string,
+  attachments?: OutboundAttachmentPayload[],
 ): Promise<{ message: Message | null; error?: string }> {
   const row = getDb()
     .prepare("SELECT * FROM conversations WHERE id = ?")
     .get(conversationId) as ConversationRow | undefined;
-  if (!row || !content.trim()) {
+  const trimmed = content.trim();
+  if (!row || (!trimmed && !attachments?.length)) {
     return { message: null, error: "Диалог не найден" };
   }
 
@@ -841,7 +980,7 @@ export async function sendMessage(
   const message: Message = {
     id: `m-${Date.now()}`,
     conversationId,
-    content: content.trim(),
+    content: trimmed,
     direction: "out",
     status: "sent",
     operatorId: senderId,
@@ -849,17 +988,27 @@ export async function sendMessage(
   };
 
   insertMessage(message);
+  if (attachments?.length) {
+    message.attachments = insertAttachmentsForMessage(
+      message.id,
+      conversationId,
+      attachments,
+    );
+  }
+
+  const preview = messagePreviewText(trimmed, message.attachments);
   getDb()
     .prepare(
       "UPDATE conversations SET last_message_preview = ?, updated_at = ?, unread_count = 0 WHERE id = ?",
     )
-    .run(content.trim(), message.createdAt, conversationId);
+    .run(preview, message.createdAt, conversationId);
 
   if (conversation.externalThreadId) {
     const result = await dispatchOutboundMessage({
       channel: conversation.channel,
       externalThreadId: conversation.externalThreadId,
-      content: content.trim(),
+      content: trimmed,
+      attachments,
     });
 
     message.status = result.ok ? "delivered" : "failed";
@@ -871,7 +1020,9 @@ export async function sendMessage(
         )
         .run(
           conversation.channel,
-          `max-${result.externalId}`,
+          conversation.channel === "max"
+            ? `max-${result.externalId}`
+            : result.externalId,
         );
     }
     updateMessage(message);
@@ -882,6 +1033,106 @@ export async function sendMessage(
   }
 
   return { message };
+}
+
+export function getMessageById(messageId: string): (Message & {
+  channel: Channel;
+  externalThreadId?: string;
+}) | null {
+  const row = getDb()
+    .prepare(
+      `SELECT m.*, c.channel, c.external_thread_id
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE m.id = ?`,
+    )
+    .get(messageId) as
+    | (MessageRow & { channel: Channel; external_thread_id: string | null })
+    | undefined;
+  if (!row) return null;
+  const attachments = loadAttachmentsForMessages([row.id]).get(row.id);
+  return {
+    ...rowToMessage(row, attachments),
+    channel: row.channel,
+    externalThreadId: row.external_thread_id ?? undefined,
+  };
+}
+
+export function getAttachmentById(
+  attachmentId: string,
+): (MessageAttachment & { messageId: string; conversationId: string }) | null {
+  const row = getDb()
+    .prepare(
+      `SELECT a.*, m.conversation_id
+       FROM message_attachments a
+       JOIN messages m ON m.id = a.message_id
+       WHERE a.id = ?`,
+    )
+    .get(attachmentId) as
+    | (AttachmentRow & { conversation_id: string })
+    | undefined;
+  if (!row) return null;
+  return {
+    ...rowToAttachment(row),
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+  };
+}
+
+export async function deleteMessage(
+  messageId: string,
+  options?: { revoke?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
+  const message = getMessageById(messageId);
+  if (!message) {
+    return { ok: false, error: "Сообщение не найдено" };
+  }
+
+  if (message.externalId && message.externalThreadId) {
+    const remote = await deleteChannelMessage({
+      channel: message.channel,
+      externalThreadId: message.externalThreadId,
+      channelMessageId: message.externalId,
+      revoke: options?.revoke ?? false,
+    });
+    if (!remote.ok && options?.revoke) {
+      return { ok: false, error: remote.error ?? "Не удалось удалить в Telegram" };
+    }
+  }
+
+  const attachmentRows = getDb()
+    .prepare("SELECT * FROM message_attachments WHERE message_id = ?")
+    .all(messageId) as AttachmentRow[];
+  for (const attachment of attachmentRows) {
+    deleteMediaFile(attachment.storage_path);
+  }
+
+  getDb().prepare("DELETE FROM message_attachments WHERE message_id = ?").run(messageId);
+  getDb().prepare("DELETE FROM messages WHERE id = ?").run(messageId);
+
+  const latest = getDb()
+    .prepare(
+      "SELECT content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(message.conversationId) as
+    | { content: string; created_at: string }
+    | undefined;
+
+  if (latest) {
+    getDb()
+      .prepare(
+        "UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(latest.content, latest.created_at, message.conversationId);
+  } else {
+    getDb()
+      .prepare(
+        "UPDATE conversations SET last_message_preview = '', updated_at = ? WHERE id = ?",
+      )
+      .run(new Date().toISOString(), message.conversationId);
+  }
+
+  return { ok: true };
 }
 
 export async function startOutboundConversation(params: {

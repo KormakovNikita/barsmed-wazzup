@@ -162,17 +162,48 @@ export function InboxApp() {
     await fetchConversations();
   }
 
-  async function handleSendMessage(content: string) {
+  async function handleSendMessage(content: string, file?: File) {
     if (!selectedId) return;
     setSendError(null);
-    const res = await fetch(`/api/conversations/${selectedId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content,
-        operatorId: conversationDetail?.assignedTo,
-      }),
-    });
+
+    let res: Response;
+    if (file) {
+      const form = new FormData();
+      form.append("content", content);
+      if (conversationDetail?.assignedTo) {
+        form.append("operatorId", conversationDetail.assignedTo);
+      }
+      form.append("file", file);
+      res = await fetch(`/api/conversations/${selectedId}/messages`, {
+        method: "POST",
+        body: form,
+      });
+    } else {
+      res = await fetch(`/api/conversations/${selectedId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          operatorId: conversationDetail?.assignedTo,
+        }),
+      });
+    }
+
+    const data = await res.json();
+    if (data.error) {
+      setSendError(data.error);
+    }
+    await fetchConversationDetail(selectedId);
+    await fetchConversations();
+  }
+
+  async function handleDeleteMessage(messageId: string, revoke: boolean) {
+    if (!selectedId) return;
+    setSendError(null);
+    const res = await fetch(
+      `/api/messages/${messageId}?revoke=${revoke ? "true" : "false"}`,
+      { method: "DELETE" },
+    );
     const data = await res.json();
     if (data.error) {
       setSendError(data.error);
@@ -269,6 +300,7 @@ export function InboxApp() {
             conversation={conversationDetail}
             loading={loadingDetail && !conversationDetail}
             onSendMessage={handleSendMessage}
+            onDeleteMessage={handleDeleteMessage}
             onSimulateIncoming={handleSimulateIncoming}
             sendError={sendError}
           />

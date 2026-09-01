@@ -38,6 +38,27 @@ export interface Contact {
   channelUserIds?: Partial<Record<Channel, string>>;
 }
 
+export type MessageMediaType =
+  | "image"
+  | "video"
+  | "audio"
+  | "document"
+  | "voice"
+  | "sticker";
+
+export interface MessageAttachment {
+  id: string;
+  messageId: string;
+  type: MessageMediaType;
+  mimeType?: string;
+  fileName?: string;
+  fileSize?: number;
+  storagePath: string;
+  url: string;
+  width?: number;
+  height?: number;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -47,6 +68,24 @@ export interface Message {
   createdAt: string;
   operatorId?: string;
   externalId?: string;
+  attachments?: MessageAttachment[];
+}
+
+export interface IncomingAttachmentPayload {
+  type: MessageMediaType;
+  mimeType: string;
+  fileName?: string;
+  fileSize?: number;
+  buffer: Buffer;
+  width?: number;
+  height?: number;
+}
+
+export interface OutboundAttachmentPayload {
+  type: MessageMediaType;
+  mimeType: string;
+  fileName?: string;
+  buffer: Buffer;
 }
 
 export interface Conversation {
@@ -74,6 +113,9 @@ export interface IncomingMessagePayload {
   content: string;
   senderName: string;
   senderUsername?: string;
+  /** Channel-native message id for delete/edit APIs */
+  channelMessageId?: string;
+  attachments?: IncomingAttachmentPayload[];
   /** MAX: dialog chat_id (preferred thread key) */
   maxChatId?: string;
   /** MAX: sender user_id (for delivery and dedup) */
@@ -86,4 +128,5 @@ export interface OutboundMessagePayload {
   channel: Channel;
   externalThreadId: string;
   content: string;
+  attachments?: OutboundAttachmentPayload[];
 }

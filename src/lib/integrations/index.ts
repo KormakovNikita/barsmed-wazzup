@@ -8,6 +8,7 @@ import {
   type MaxUpdate,
 } from "./max";
 import {
+  deleteTelegramMessage,
   getTelegramMode,
   getTelegramStatus,
   isTelegramConfigured,
@@ -23,10 +24,29 @@ export async function dispatchOutboundMessage(
     case "telegram":
       return sendTelegramMessage(payload);
     case "max":
+      if (payload.attachments?.length) {
+        return { ok: false, error: "MAX пока поддерживает только текст" };
+      }
       return sendMaxMessage(payload);
     default:
       return { ok: true };
   }
+}
+
+export async function deleteChannelMessage(params: {
+  channel: Channel;
+  externalThreadId: string;
+  channelMessageId: string;
+  revoke?: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (params.channel === "telegram") {
+    return deleteTelegramMessage({
+      externalThreadId: params.externalThreadId,
+      channelMessageId: params.channelMessageId,
+      revoke: params.revoke,
+    });
+  }
+  return { ok: true };
 }
 
 export function isChannelIntegrationActive(channel: Channel): boolean {

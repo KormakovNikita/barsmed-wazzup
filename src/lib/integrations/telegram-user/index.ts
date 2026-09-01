@@ -113,6 +113,7 @@ export async function getTelegramUserProfile() {
 export async function sendTelegramUserMessage(
   externalThreadId: string,
   content: string,
+  attachments?: import("@/lib/types").OutboundAttachmentPayload[],
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   try {
     const c = await getTelegramUserClient();
@@ -121,13 +122,64 @@ export async function sendTelegramUserMessage(
     }
 
     const entity = await c.getEntity(externalThreadId);
-    const result = await c.sendMessage(entity, { message: content });
 
+    if (attachments?.length) {
+      const attachment = attachments[0];
+      const fileBuffer = attachment.buffer as Buffer & { name?: string };
+      fileBuffer.name = attachment.fileName ?? `file.${attachment.mimeType.split("/")[1] ?? "bin"}`;
+
+      const result = await c.sendFile(entity, {
+        file: fileBuffer,
+        caption: content.trim() || undefined,
+        forceDocument:
+          attachment.type === "document" ||
+          attachment.type === "audio" ||
+          attachment.type === "voice",
+        voiceNote: attachment.type === "voice",
+      });
+
+      return { ok: true, externalId: String(result.id) };
+    }
+
+    if (!content.trim()) {
+      return { ok: false, error: "Пустое сообщение" };
+    }
+
+    const result = await c.sendMessage(entity, { message: content });
     return { ok: true, externalId: String(result.id) };
   } catch (error) {
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Ошибка отправки",
+    };
+  }
+}
+
+export async function deleteTelegramUserMessages(
+  externalThreadId: string,
+  messageIds: string[],
+  revoke = false,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const c = await getTelegramUserClient();
+    if (!c || !(await c.isUserAuthorized())) {
+      return { ok: false, error: "Личный Telegram не подключён" };
+    }
+
+    const entity = await c.getEntity(externalThreadId);
+    const numericIds = messageIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id));
+    if (!numericIds.length) {
+      return { ok: false, error: "Некорректный ID сообщения" };
+    }
+
+    await c.deleteMessages(entity, numericIds, { revoke });
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Ошибка удаления",
     };
   }
 }

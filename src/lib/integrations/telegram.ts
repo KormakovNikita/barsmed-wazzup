@@ -16,6 +16,7 @@ import {
   isTelegramUserAuthorized,
   isTelegramUserConfigured,
   sendTelegramUserMessage,
+  deleteTelegramUserMessages,
   startTelegramUserListener,
 } from "./telegram-user";
 import {
@@ -54,12 +55,35 @@ export async function sendTelegramMessage(
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   const mode = getTelegramMode();
   if (mode === "user") {
-    return sendTelegramUserMessage(payload.externalThreadId, payload.content);
+    return sendTelegramUserMessage(
+      payload.externalThreadId,
+      payload.content,
+      payload.attachments,
+    );
   }
   if (mode === "wazzup") {
     return sendWazzupTelegramMessage(payload);
   }
+  if (payload.attachments?.length) {
+    return { ok: false, error: "Медиа поддерживается только для личного Telegram" };
+  }
   return sendTelegramBotMessage(payload);
+}
+
+export async function deleteTelegramMessage(params: {
+  externalThreadId: string;
+  channelMessageId: string;
+  revoke?: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  const mode = getTelegramMode();
+  if (mode !== "user") {
+    return { ok: false, error: "Удаление доступно только для личного Telegram" };
+  }
+  return deleteTelegramUserMessages(
+    params.externalThreadId,
+    [params.channelMessageId],
+    params.revoke ?? false,
+  );
 }
 
 export function parseTelegramUpdate(update: TelegramUpdate) {
@@ -157,6 +181,7 @@ export {
   resolveTelegramPeer,
   restartTelegramUserListener,
   startTelegramUserListener,
+  deleteTelegramUserMessages,
 } from "./telegram-user";
 
 export { startTelegramQrAuth } from "./telegram-user/qr-auth";

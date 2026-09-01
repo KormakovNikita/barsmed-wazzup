@@ -1,7 +1,9 @@
 import { getPeerId } from "teleproto/Utils";
 import type { Api } from "teleproto/tl";
 import type { CustomMessage } from "teleproto/tl/custom/message";
+import { mediaPreviewLabel } from "@/lib/media-storage";
 import { processIncomingMessage } from "@/lib/store";
+import { extractTelegramMedia } from "./media";
 
 type IncomingTelegramMessage = CustomMessage | Api.Message;
 
@@ -15,17 +17,12 @@ function getThreadId(message: IncomingTelegramMessage): string | null {
   return null;
 }
 
-function getMessageText(message: IncomingTelegramMessage): string | null {
+function getMessageText(message: IncomingTelegramMessage): string {
   const text =
     ("text" in message && message.text) ||
     ("message" in message && message.message) ||
     "";
-  const trimmed = String(text).trim();
-  if (trimmed) return trimmed;
-  if ("media" in message && message.media) {
-    return "[медиа]";
-  }
-  return null;
+  return String(text).trim();
 }
 
 async function resolveSenderInfo(message: IncomingTelegramMessage): Promise<{
@@ -70,9 +67,6 @@ export async function processTelegramUserMessage(
 ): Promise<{ conversationId: string; created: boolean } | null> {
   if (!message || ("out" in message && message.out)) return null;
 
-  const content = getMessageText(message);
-  if (!content) return null;
-
   const threadId = getThreadId(message);
   if (!threadId) return null;
 
@@ -82,13 +76,33 @@ export async function processTelegramUserMessage(
   const messageId = "id" in message ? message.id : 0;
   const messageDate = "date" in message ? message.date : 0;
 
+  let attachments: import("@/lib/types").IncomingAttachmentPayload[] | undefined;
+  try {
+    const media = await extractTelegramMedia(message);
+    attachments = media ? [media] : undefined;
+  } catch (error) {
+    console.error("[telegram-user] media download failed:", error);
+    attachments = undefined;
+  }
+
+  const text = getMessageText(message);
+  const content =
+    text ||
+    (attachments?.length
+      ? mediaPreviewLabel(attachments[0].type, attachments[0].fileName)
+      : "");
+
+  if (!content && !attachments?.length) return null;
+
   const result = processIncomingMessage({
     channel: "telegram",
     externalThreadId: threadId,
     externalMessageId: `tg-user-${messageId}-${messageDate}`,
-    content,
+    channelMessageId: String(messageId),
+    content: content || mediaPreviewLabel(attachments![0].type, attachments![0].fileName),
     senderName: name,
     senderUsername: username,
+    attachments,
   });
 
   if (!result) return null;
