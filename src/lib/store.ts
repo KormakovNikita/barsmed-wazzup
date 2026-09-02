@@ -361,6 +361,10 @@ function findExistingMessageRow(
   return undefined;
 }
 
+function isMediaPreviewContent(content: string): boolean {
+  return /^[📷🎬🎵🎤📎🙂]/.test(content.trim());
+}
+
 function applyMessageEdit(
   existing: MessageRow,
   newContent: string,
@@ -368,6 +372,20 @@ function applyMessageEdit(
 ): Message | null {
   const trimmed = newContent.trim();
   if (!trimmed || trimmed === existing.content.trim()) {
+    return null;
+  }
+
+  // Outbound echoes from channels must not overwrite operator message text.
+  if (existing.direction === "out") {
+    return null;
+  }
+
+  // Ignore channel echoes that only carry a media placeholder label.
+  if (
+    isMediaPreviewContent(trimmed) &&
+    existing.content.trim() &&
+    !isMediaPreviewContent(existing.content)
+  ) {
     return null;
   }
 

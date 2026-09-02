@@ -344,41 +344,9 @@ function resolveWazzupMaxChatType(transport: string | null | undefined): string 
   return "max";
 }
 
-export async function sendWazzupMaxMessage(
-  payload: OutboundMessagePayload & { attachmentUrls?: string[] },
+async function postWazzupMaxRequest(
+  body: Record<string, string>,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
-  if (!isWazzupConfigured()) {
-    return { ok: false, error: "WAZZUP_API_KEY не задан" };
-  }
-
-  const channelId = await findWazzupMaxChannelId();
-  if (!channelId) {
-    return {
-      ok: false,
-      error: "Не найден MAX/maxbot канал в Wazzup",
-    };
-  }
-
-  const channels = await listWazzupChannels();
-  const channel = channels.find((ch) => ch.channelId === channelId);
-  const chatType = resolveWazzupMaxChatType(channel?.transport);
-  const threadId = payload.externalThreadId.trim();
-
-  const body: Record<string, string> = {
-    channelId,
-    chatType,
-    chatId: threadId,
-  };
-
-  const attachmentUrl = payload.attachmentUrls?.[0];
-  if (attachmentUrl) {
-    body.contentUri = attachmentUrl;
-  } else if (payload.content.trim()) {
-    body.text = payload.content.trim();
-  } else {
-    return { ok: false, error: "Пустое сообщение" };
-  }
-
   const response = await fetch("https://api.wazzup24.com/v3/message", {
     method: "POST",
     headers: {
@@ -411,4 +379,69 @@ export async function sendWazzupMaxMessage(
     ok: true,
     externalId: data.messageId,
   };
+}
+
+export async function sendWazzupMaxMessage(
+  payload: OutboundMessagePayload & { attachmentUrls?: string[] },
+): Promise<{ ok: boolean; externalId?: string; error?: string }> {
+  if (!isWazzupConfigured()) {
+    return { ok: false, error: "WAZZUP_API_KEY не задан" };
+  }
+
+  const channelId = await findWazzupMaxChannelId();
+  if (!channelId) {
+    return {
+      ok: false,
+      error: "Не найден MAX/maxbot канал в Wazzup",
+    };
+  }
+
+  const channels = await listWazzupChannels();
+  const channel = channels.find((ch) => ch.channelId === channelId);
+  const chatType = resolveWazzupMaxChatType(channel?.transport);
+  const threadId = payload.externalThreadId.trim();
+  const baseBody = {
+    channelId,
+    chatType,
+    chatId: threadId,
+  };
+
+  const text = payload.content.trim();
+  const attachmentUrl = payload.attachmentUrls?.[0];
+
+  // Wazzup allows only text OR contentUri per request — send both when needed.
+  if (attachmentUrl && text) {
+    const textResult = await postWazzupMaxRequest({
+      ...baseBody,
+      text,
+    });
+    if (!textResult.ok) return textResult;
+
+    const fileResult = await postWazzupMaxRequest({
+      ...baseBody,
+      contentUri: attachmentUrl,
+    });
+    if (!fileResult.ok) return fileResult;
+
+    return {
+      ok: true,
+      externalId: fileResult.externalId ?? textResult.externalId,
+    };
+  }
+
+  if (attachmentUrl) {
+    return postWazzupMaxRequest({
+      ...baseBody,
+      contentUri: attachmentUrl,
+    });
+  }
+
+  if (text) {
+    return postWazzupMaxRequest({
+      ...baseBody,
+      text,
+    });
+  }
+
+  return { ok: false, error: "Пустое сообщение" };
 }
