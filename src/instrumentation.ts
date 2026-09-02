@@ -115,5 +115,13 @@ export async function register() {
         console.error("[instrumentation] MAX Personal listener failed:", error);
       });
     }
+
+    const { reconcileAllConversationReplyStates } = await import("@/lib/store");
+    const reconciled = reconcileAllConversationReplyStates();
+    if (reconciled > 0) {
+      console.info(
+        `[instrumentation] Reconciled awaiting-reply for ${reconciled} conversations`,
+      );
+    }
   }
 }

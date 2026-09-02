@@ -122,15 +122,28 @@ function bottomConversationSortTimestamp(): string {
 }
 
 function syncAwaitingReplyFromLastMessage(conversationId: string): void {
-  const last = getDb()
+  const lastInbound = getDb()
     .prepare(
-      "SELECT direction FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+      `SELECT created_at FROM messages
+       WHERE conversation_id = ? AND direction = 'in'
+       ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(conversationId) as { direction: "in" | "out" } | undefined;
+    .get(conversationId) as { created_at: string } | undefined;
 
-  if (!last) return;
+  const lastOperatorReply = getDb()
+    .prepare(
+      `SELECT created_at FROM messages
+       WHERE conversation_id = ? AND direction = 'out' AND operator_id IS NOT NULL
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(conversationId) as { created_at: string } | undefined;
 
-  if (last.direction === "in") {
+  const needsReply =
+    lastInbound != null &&
+    (lastOperatorReply == null ||
+      lastInbound.created_at > lastOperatorReply.created_at);
+
+  if (needsReply) {
     getDb()
       .prepare(
         `UPDATE conversations
@@ -141,11 +154,19 @@ function syncAwaitingReplyFromLastMessage(conversationId: string): void {
       .run(conversationId);
   } else {
     getDb()
-      .prepare(
-        "UPDATE conversations SET awaiting_reply = 0 WHERE id = ?",
-      )
+      .prepare("UPDATE conversations SET awaiting_reply = 0 WHERE id = ?")
       .run(conversationId);
   }
+}
+
+export function reconcileAllConversationReplyStates(): number {
+  const rows = getDb()
+    .prepare("SELECT id FROM conversations")
+    .all() as { id: string }[];
+  for (const row of rows) {
+    syncAwaitingReplyFromLastMessage(row.id);
+  }
+  return rows.length;
 }
 
 function rowToAttachment(row: AttachmentRow): MessageAttachment {
@@ -1276,15 +1297,21 @@ export function processIncomingMessage(
     const preview = messagePreviewText(payload.content, savedAttachments);
     getDb()
       .prepare(
-        isOutbound
-          ? `UPDATE conversations
-             SET last_message_preview = ?, updated_at = ?, awaiting_reply = 0, unread_count = 0
-             WHERE id = ?`
-          : `UPDATE conversations
-             SET last_message_preview = ?, updated_at = ?, awaiting_reply = 1, unread_count = unread_count + 1
-             WHERE id = ?`,
+        `UPDATE conversations
+         SET last_message_preview = ?, updated_at = ?
+         WHERE id = ?`,
       )
       .run(preview, message.createdAt, conversation!.id);
+
+    if (!isOutbound) {
+      getDb()
+        .prepare(
+          "UPDATE conversations SET unread_count = unread_count + 1 WHERE id = ?",
+        )
+        .run(conversation!.id);
+    }
+
+    syncAwaitingReplyFromLastMessage(conversation!.id);
   });
   tx();
 
