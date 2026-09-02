@@ -18,6 +18,8 @@ export {
 export { sendWhatsAppMessage, resolveWhatsAppPeer } from "./send";
 export { hasWhatsAppSession, isWhatsAppEnabled } from "./session-path";
 export {
+  getWhatsAppProxyHint,
+  getWhatsAppProxyInfo,
   getWhatsAppProxyUrl,
   maskProxyUrl,
   isWhatsAppProxyConfigured,

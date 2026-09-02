@@ -8,6 +8,8 @@ import makeWASocket, {
 import pino from "pino";
 import {
   createWhatsAppProxyAgent,
+  getWhatsAppProxyHint,
+  getWhatsAppProxyInfo,
   getWhatsAppProxyUrl,
   isWhatsAppProxyConfigured,
 } from "@/lib/integrations/whatsapp/proxy";
@@ -199,8 +201,10 @@ export async function createWhatsAppQrSocket(hooks: {
 }): Promise<WASocket> {
   await resetWhatsAppClient();
   if (!getWhatsAppProxyUrl()) {
+    const hint = getWhatsAppProxyHint();
     throw new Error(
-      "Сначала задайте SOCKS5/HTTP прокси (VPN). WhatsApp в РФ без VPN не работает.",
+      hint ??
+        "Сначала задайте SOCKS5/HTTP прокси (VPN). WhatsApp в РФ без VPN не работает.",
     );
   }
   return createSocket(getWhatsAppSessionDir(), hooks);
@@ -211,15 +215,22 @@ export async function getWhatsAppStatus(): Promise<{
   configured: boolean;
   connected: boolean;
   proxyConfigured: boolean;
+  proxySource: "whatsapp" | "telegram" | null;
+  proxyHint: string | null;
   profile: { id?: string; name?: string; phone?: string } | null;
   error?: string | null;
 }> {
+  const proxyInfo = getWhatsAppProxyInfo();
+  const proxyHint = getWhatsAppProxyHint();
+
   if (!isWhatsAppEnabled()) {
     return {
       enabled: false,
       configured: false,
       connected: false,
       proxyConfigured: isWhatsAppProxyConfigured(),
+      proxySource: proxyInfo.source,
+      proxyHint,
       profile: null,
     };
   }
@@ -233,8 +244,11 @@ export async function getWhatsAppStatus(): Promise<{
       configured,
       connected: false,
       proxyConfigured: false,
+      proxySource: proxyInfo.source,
+      proxyHint,
       profile: null,
       error:
+        proxyHint ??
         "Задайте прокси (VPN): SOCKS5 или HTTP. Без него WhatsApp в России недоступен.",
     };
   }
@@ -247,6 +261,8 @@ export async function getWhatsAppStatus(): Promise<{
         configured,
         connected: false,
         proxyConfigured: true,
+        proxySource: proxyInfo.source,
+        proxyHint,
         profile: null,
         error:
           lastBootError ??
@@ -263,6 +279,8 @@ export async function getWhatsAppStatus(): Promise<{
       configured: true,
       connected: true,
       proxyConfigured: true,
+      proxySource: proxyInfo.source,
+      proxyHint,
       profile: {
         id: user.id.split(":")[0] ?? user.id,
         name,
@@ -275,6 +293,8 @@ export async function getWhatsAppStatus(): Promise<{
       configured,
       connected: false,
       proxyConfigured: true,
+      proxySource: proxyInfo.source,
+      proxyHint,
       profile: null,
       error: error instanceof Error ? error.message : "Ошибка WhatsApp",
     };

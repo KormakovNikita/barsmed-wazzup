@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteSetting, getSetting, setSetting } from "@/lib/settings-store";
 import {
+  getWhatsAppProxyInfo,
   getWhatsAppProxyUrl,
   maskProxyUrl,
   parseWhatsAppProxyUrl,
@@ -11,11 +12,14 @@ export const runtime = "nodejs";
 export async function GET() {
   const proxyRaw =
     getSetting("whatsapp_proxy") ?? process.env.WHATSAPP_PROXY ?? "";
-  const configured = Boolean(getWhatsAppProxyUrl());
+  const info = getWhatsAppProxyInfo();
 
   return NextResponse.json({
-    configured,
-    proxyPreview: proxyRaw ? maskProxyUrl(proxyRaw) : null,
+    configured: Boolean(getWhatsAppProxyUrl()),
+    proxyPreview: info.url ? maskProxyUrl(info.url) : null,
+    proxySource: info.source,
+    usesTelegramProxy: info.source === "telegram",
+    telegramIsMtProxy: info.telegramIsMtProxy,
   });
 }
 
