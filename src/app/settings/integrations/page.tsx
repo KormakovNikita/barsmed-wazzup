@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 import { MaxConnectPanel } from "@/components/settings/max-connect-panel";
 import { MaxPersonalConnectForm } from "@/components/settings/max-personal-connect-form";
 import { MaxProxyPanel } from "@/components/settings/max-proxy-panel";
@@ -10,12 +11,15 @@ import { Button } from "@/components/ui/button";
 export default function IntegrationsSettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Интеграции</h1>
-          <p className="text-sm text-muted-foreground">
-            Подключите каналы для приёма и отправки сообщений клиентам
-          </p>
+      <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-6">
+        <div className="space-y-3">
+          <BrandLogo href="/inbox" />
+          <div>
+            <h1 className="text-2xl font-bold text-primary">Интеграции</h1>
+            <p className="text-sm text-muted-foreground">
+              Подключите каналы для приёма и отправки сообщений клиентам
+            </p>
+          </div>
         </div>
         <Button variant="outline" render={<Link href="/inbox" />}>
           ← Входящие
@@ -45,7 +49,7 @@ export default function IntegrationsSettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">ВКонтакте — сообщения сообщества</h2>
         <p className="text-sm text-muted-foreground">
-          Клиенты пишут в личные сообщения вашего сообщества VK. HubDesk
+          Клиенты пишут в личные сообщения вашего сообщества VK. Система
           получает их через Long Poll (работает без HTTPS) и позволяет отвечать
           из единого inbox.
         </p>

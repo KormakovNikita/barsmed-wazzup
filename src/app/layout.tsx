@@ -14,9 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HubDesk — Омниканальный inbox",
+  title: "БАРСМЕД — Входящие сообщения",
   description:
-    "Единое окно для WhatsApp, Telegram, MAX, VK и Instagram. Аналог Wazzup для вашей компании.",
+    "Единое окно для переписки с клиентами БАРСМЕД: Telegram, MAX, VK и другие каналы.",
+  icons: {
+    icon: "/branding/logo-icon.png",
+    apple: "/branding/logo-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

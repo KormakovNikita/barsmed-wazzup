@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { AppSidebar } from "@/components/inbox/app-sidebar";
 import { ConversationList, type ConversationListFilter } from "@/components/inbox/conversation-list";
 import { ChatPanel } from "@/components/inbox/chat-panel";
@@ -539,7 +540,8 @@ export function InboxApp() {
               <ConversationList {...conversationListProps} />
             </SheetContent>
           </Sheet>
-          <span className="font-semibold">HubDesk</span>
+          <BrandLogo variant="icon" href="/inbox" />
+          <span className="font-semibold text-brand-dark">БАРСМЕД</span>
           {syncing && (
             <span className="text-xs text-muted-foreground">синхронизация…</span>
           )}

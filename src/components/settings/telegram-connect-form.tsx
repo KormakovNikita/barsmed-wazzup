@@ -194,7 +194,7 @@ export function TelegramConnectForm() {
         <p className="font-medium">Почему в Wazzup не нужен был API?</p>
         <p className="mt-1 text-xs leading-relaxed">
           Wazzup — платный посредник: у них уже зарегистрировано приложение в
-          Telegram, вы только сканировали QR. HubDesk подключается напрямую —
+          Telegram, вы только сканировали QR. БАРСМЕД подключается напрямую —
           нужны API-ключи приложения <strong>один раз</strong> (как «паспорт»
           программы), дальше только QR.
         </p>

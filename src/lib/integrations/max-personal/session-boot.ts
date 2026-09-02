@@ -42,7 +42,7 @@ export async function bootMaxPersonalClient(
     return {
       ok: false,
       error:
-        "Сессия MAX Personal истекла. Войдите по QR в настройках. Не используйте «Завершить все сессии» в приложении MAX, пока работает HubDesk.",
+        "Сессия MAX Personal истекла. Войдите по QR в настройках. Не используйте «Завершить все сессии» в приложении MAX, пока работает БАРСМЕД.",
     };
   }
 }

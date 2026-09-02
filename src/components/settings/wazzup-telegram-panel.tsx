@@ -60,7 +60,7 @@ export function WazzupTelegramPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
-      setMessage("Webhook Wazzup зарегистрирован — сообщения пойдут в HubDesk");
+      setMessage("Webhook Wazzup зарегистрирован — сообщения пойдут во входящие");
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");

@@ -109,7 +109,7 @@ export function MaxConnectPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
-      setMessage("Чужие webhook отключены — HubDesk получит новые сообщения через polling");
+      setMessage("Чужие webhook отключены — новые сообщения будут получены через polling");
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
@@ -316,7 +316,7 @@ export function MaxConnectPanel() {
       {status?.webhooks && status.webhooks.length > 0 && (
         <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
           <p className="font-medium text-amber-900 dark:text-amber-100">
-            Сообщения уходят на чужие webhook — HubDesk их не видит
+            Сообщения уходят на чужие webhook — система их не видит
           </p>
           <ul className="list-inside list-disc text-xs text-amber-800 dark:text-amber-200">
             {status.webhooks.map((sub) => (
@@ -384,7 +384,7 @@ export function MaxConnectPanel() {
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Без HTTPS (домена) HubDesk получает сообщения через polling каждые 5 сек —
+          Без HTTPS (домена) сообщения получаются через polling каждые 5 сек —
           достаточно для начала. Для production укажите{" "}
           <code>WEBHOOK_BASE_URL=https://ваш-домен.ru</code>.
         </p>

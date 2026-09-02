@@ -4,10 +4,10 @@ import Link from "next/link";
 import {
   Inbox,
   LayoutDashboard,
-  MessageSquare,
   Settings,
   Users,
 } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -59,14 +59,9 @@ export function AppSidebar({
 }: AppSidebarProps) {
   return (
     <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar md:flex">
-      <div className="flex items-center gap-3 px-4 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <MessageSquare className="h-4 w-4" />
-        </div>
-        <div>
-          <p className="text-sm font-bold leading-none tracking-tight">HubDesk</p>
-          <p className="mt-1 text-[10px] text-muted-foreground">Омниканальный inbox</p>
-        </div>
+      <div className="px-4 py-5">
+        <BrandLogo href="/inbox" />
+        <p className="mt-2 text-[10px] text-muted-foreground">Входящие сообщения</p>
       </div>
 
       <Separator className="opacity-60" />
@@ -162,7 +157,7 @@ export function AppSidebar({
                   className={cn(
                     "h-2 w-2 rounded-full",
                     integrationStatus.telegram.connected
-                      ? "bg-emerald-500"
+                      ? "bg-brand-light"
                       : "bg-muted-foreground/40",
                   )}
                 />
@@ -173,7 +168,7 @@ export function AppSidebar({
                   className={cn(
                     "h-2 w-2 rounded-full",
                     integrationStatus.max.connected
-                      ? "bg-emerald-500"
+                      ? "bg-brand-light"
                       : "bg-muted-foreground/40",
                   )}
                 />
@@ -184,7 +179,7 @@ export function AppSidebar({
                   className={cn(
                     "h-2 w-2 rounded-full",
                     integrationStatus.maxPersonal?.connected
-                      ? "bg-emerald-500"
+                      ? "bg-brand-light"
                       : "bg-muted-foreground/40",
                   )}
                 />

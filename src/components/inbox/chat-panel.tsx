@@ -566,7 +566,7 @@ export function ChatPanel({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {conversation.awaitingReply && (
-            <span className="hidden rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-800 sm:inline">
+            <span className="hidden rounded-full bg-brand-light/15 px-2.5 py-1 text-[11px] font-medium text-brand-dark sm:inline">
               ждёт ответа
             </span>
           )}

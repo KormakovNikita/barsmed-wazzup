@@ -210,7 +210,7 @@ export function ConversationList({
                       "flex w-full gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-150",
                       "hover:bg-accent/60 active:scale-[0.995]",
                       isSelected && "bg-primary/8 ring-1 ring-primary/20",
-                      conv.awaitingReply && !isSelected && "bg-amber-50/80",
+                      conv.awaitingReply && !isSelected && "bg-brand-light/10",
                     )}
                   >
                     <div className="relative shrink-0">
@@ -270,7 +270,7 @@ export function ConversationList({
                         )}
                       </div>
                       {conv.awaitingReply && (
-                        <span className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                        <span className="mt-1 inline-flex items-center rounded-full bg-brand-light/15 px-2 py-0.5 text-[10px] font-medium text-brand-dark">
                           нужен ответ
                         </span>
                       )}

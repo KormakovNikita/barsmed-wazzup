@@ -65,7 +65,7 @@ export function TelegramConnectPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
       setMessage(
-        "Webhook отключён — HubDesk получит сообщения через polling",
+        "Webhook отключён — сообщения будут получены через polling",
       );
       await loadStatus();
     } catch (err) {
@@ -231,7 +231,7 @@ export function TelegramConnectPanel() {
         </div>
       ) : isBotMode ? (
         <p className="text-xs text-muted-foreground">
-          Без HTTPS HubDesk опрашивает Telegram каждые 5 сек — как MAX. Для
+          Без HTTPS сообщения опрашиваются каждые 5 сек — как MAX. Для
           production укажите{" "}
           <code>WEBHOOK_BASE_URL=https://ваш-домен.ru</code>.
         </p>
