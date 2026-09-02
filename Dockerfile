@@ -13,6 +13,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=1536"
+# Avoid SQLite lock during parallel Next.js page-data collection at build time
+ENV DATABASE_PATH=:memory:
+ENV SEED_DEMO_DATA=false
 # webpack uses less RAM than Turbopack on small VPS (1-2 GB)
 RUN npm run build
 
