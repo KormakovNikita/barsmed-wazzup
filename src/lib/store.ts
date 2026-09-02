@@ -2202,6 +2202,46 @@ export function getStats() {
   };
 }
 
+/** Fix Telegram message dates imported without createdAt (shows as "today"). */
+export function repairTelegramMessageTimestamps(): number {
+  const processed = getDb()
+    .prepare(
+      `SELECT external_message_id FROM processed_external_ids
+       WHERE channel = 'telegram' AND external_message_id LIKE 'tg-user-%'`,
+    )
+    .all() as Array<{ external_message_id: string }>;
+
+  let fixed = 0;
+  for (const { external_message_id } of processed) {
+    const match = external_message_id.match(/^tg-user-(\d+)-(\d+)$/);
+    if (!match) continue;
+    const [, msgId, unix] = match;
+    const correctAt = new Date(Number(unix) * 1000).toISOString();
+
+    const row = getDb()
+      .prepare(
+        `SELECT m.id, m.created_at FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE c.channel = 'telegram' AND m.external_id = ?`,
+      )
+      .get(msgId) as { id: string; created_at: string } | undefined;
+
+    if (!row) continue;
+
+    const existingMs = new Date(row.created_at).getTime();
+    const correctMs = new Date(correctAt).getTime();
+    if (!Number.isFinite(existingMs) || !Number.isFinite(correctMs)) continue;
+    if (Math.abs(existingMs - correctMs) < 60 * 60 * 1000) continue;
+
+    getDb()
+      .prepare("UPDATE messages SET created_at = ? WHERE id = ?")
+      .run(correctAt, row.id);
+    fixed++;
+  }
+
+  return fixed;
+}
+
 // Touch DB on module load in Node runtime.
 if (typeof window === "undefined") {
   getDb();

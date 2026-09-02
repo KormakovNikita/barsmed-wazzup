@@ -138,6 +138,10 @@ export async function processTelegramUserMessage(
 
   const messageId = "id" in message ? message.id : 0;
   const messageDate = "date" in message ? message.date : 0;
+  const createdAt =
+    messageDate > 0
+      ? new Date(messageDate * 1000).toISOString()
+      : undefined;
 
   const mediaInfo = inspectTelegramMedia(message);
 
@@ -178,6 +182,7 @@ export async function processTelegramUserMessage(
     senderUsername: username,
     attachments,
     direction: isOutbound ? "out" : "in",
+    createdAt,
   });
 
   if (!result) return null;

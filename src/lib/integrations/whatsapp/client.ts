@@ -140,7 +140,8 @@ async function createSocket(
       hooks?.onConnectionClose?.(lastBootError ?? message);
 
       if (!hooks && shouldReconnectAfterClose(statusCode) && isWhatsAppEnabled()) {
-        scheduleReconnect();
+        const conflict = statusCode === DisconnectReason.connectionReplaced;
+        scheduleReconnect(conflict ? 15000 : 5000);
       } else if (loggedOut) {
         listenerStarted = false;
         socket = null;
@@ -155,18 +156,26 @@ async function createSocket(
   return sock;
 }
 
-function scheduleReconnect(): void {
+function scheduleReconnect(delayMs = 5000): void {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     listenerStarted = false;
+    socketConnected = false;
+    if (socket) {
+      try {
+        socket.end(undefined);
+      } catch {
+        // ignore
+      }
+    }
     socket = null;
     void startWhatsAppListener();
-  }, 5000);
+  }, delayMs);
 }
 
 export function isWhatsAppSocketLive(): boolean {
-  return Boolean(socket?.user && socketConnected);
+  return Boolean(socket?.user && socketConnected && !sessionLoggedOut);
 }
 
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
@@ -333,28 +342,22 @@ export async function getWhatsAppStatus(): Promise<{
     };
   }
 
-  try {
-    const active = await getWhatsAppSocket();
-    if (!active?.user || !socketConnected) {
-      return {
-        enabled: true,
-        configured,
-        connected: false,
-        proxyConfigured: true,
-        proxySource: proxyInfo.source,
-        proxyHint,
-        profile: null,
-        error:
-          lastBootError ??
-          (sessionLoggedOut
-            ? "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках."
-            : configured
-              ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."
-              : "Подключите WhatsApp по QR-коду."),
-      };
-    }
+  if (sessionLoggedOut) {
+    return {
+      enabled: true,
+      configured,
+      connected: false,
+      proxyConfigured: true,
+      proxySource: proxyInfo.source,
+      proxyHint,
+      profile: null,
+      error:
+        "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках.",
+    };
+  }
 
-    const user = active.user;
+  if (isWhatsAppSocketLive() && socket?.user) {
+    const user = socket.user;
     const name = user.name ?? user.verifiedName ?? "WhatsApp Business";
     return {
       enabled: true,
@@ -369,16 +372,26 @@ export async function getWhatsAppStatus(): Promise<{
         phone: user.id.split(":")[0],
       },
     };
-  } catch (error) {
-    return {
-      enabled: true,
-      configured,
-      connected: false,
-      proxyConfigured: true,
-      proxySource: proxyInfo.source,
-      proxyHint,
-      profile: null,
-      error: error instanceof Error ? error.message : "Ошибка WhatsApp",
-    };
   }
+
+  if (configured && !listenerStarted && !connecting) {
+    void startWhatsAppListener();
+  }
+
+  return {
+    enabled: true,
+    configured,
+    connected: false,
+    proxyConfigured: true,
+    proxySource: proxyInfo.source,
+    proxyHint,
+    profile: null,
+    error:
+      lastBootError ??
+      (connecting || listenerStarted
+        ? "Подключение WhatsApp…"
+        : configured
+          ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."
+          : "Подключите WhatsApp по QR-коду."),
+  };
 }

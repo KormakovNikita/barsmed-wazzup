@@ -128,11 +128,19 @@ export async function register() {
       console.error("[instrumentation] WhatsApp listener failed:", error);
     });
 
-    const { reconcileAllConversationReplyStates } = await import("@/lib/store");
+    const { reconcileAllConversationReplyStates, repairTelegramMessageTimestamps } =
+      await import("@/lib/store");
     const reconciled = reconcileAllConversationReplyStates();
     if (reconciled > 0) {
       console.info(
         `[instrumentation] Reconciled awaiting-reply for ${reconciled} conversations`,
+      );
+    }
+
+    const telegramTimestampsFixed = repairTelegramMessageTimestamps();
+    if (telegramTimestampsFixed > 0) {
+      console.info(
+        `[instrumentation] Repaired Telegram timestamps for ${telegramTimestampsFixed} messages`,
       );
     }
   }
