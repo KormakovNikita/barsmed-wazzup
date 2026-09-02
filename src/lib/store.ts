@@ -468,6 +468,8 @@ function resolveReplyToChannelMessageId(
   ) {
     return externalId;
   }
+  const vkMatch = externalId.match(/^vk-\d+-(\d+)$/);
+  if (vkMatch) return vkMatch[1];
   return externalId;
 }
 
