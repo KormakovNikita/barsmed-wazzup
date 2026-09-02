@@ -3,6 +3,8 @@ import {
   downloadMediaMessage,
   getContentType,
   isJidGroup,
+  isLidUser,
+  jidDecode,
   WAMessageStatus,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
@@ -14,8 +16,13 @@ import {
 import type { IncomingAttachmentPayload, MessageMediaType } from "@/lib/types";
 import {
   formatWhatsAppPhoneDisplay,
-  jidToPhone,
+  isWhatsAppPhoneIdentifier,
+  normalizeWhatsAppPhone,
 } from "@/lib/integrations/whatsapp/phone";
+import {
+  resolveInboundWhatsAppThreadId,
+} from "@/lib/integrations/whatsapp/lid";
+import { mergeWhatsAppConversationThreads } from "@/lib/store";
 
 const mediaLogger = pino({ level: "silent" });
 const processedMessageIds = new Set<string>();
@@ -148,8 +155,24 @@ async function handleWhatsAppMessage(
   const messageId = message.key.id;
   if (!messageId || rememberProcessed(messageId)) return;
 
-  const phone = jidToPhone(message.key.remoteJid);
-  if (!phone) return;
+  const resolved = await resolveInboundWhatsAppThreadId(
+    sock,
+    message.key.remoteJid,
+  );
+  if (!resolved?.threadId) return;
+
+  const { threadId: phone } = resolved;
+
+  if (
+    isWhatsAppPhoneIdentifier(phone) &&
+    message.key.remoteJid &&
+    isLidUser(message.key.remoteJid)
+  ) {
+    const lid = jidDecode(message.key.remoteJid)?.user;
+    if (lid) {
+      mergeWhatsAppConversationThreads(lid, phone);
+    }
+  }
 
   const contentType = getContentType(message.message);
   if (!contentType) return;
@@ -212,6 +235,15 @@ function mapWhatsAppDeliveryStatus(
 }
 
 export function attachWhatsAppMessageHandler(sock: WASocket): void {
+  sock.ev.on("lid-mapping.update", (mapping) => {
+    const lid = mapping.lid?.replace(/\D/g, "") ?? "";
+    const pnUser = mapping.pn?.split("@")[0]?.replace(/\D/g, "") ?? "";
+    const phone = pnUser ? normalizeWhatsAppPhone(pnUser) : "";
+    if (lid && phone) {
+      mergeWhatsAppConversationThreads(lid, phone);
+    }
+  });
+
   sock.ev.on("messages.update", (updates) => {
     for (const { key, update } of updates) {
       if (!key.fromMe || !key.id || update.status == null) continue;

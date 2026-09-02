@@ -7,6 +7,20 @@ export function normalizeWhatsAppPhone(input: string): string {
   return digits;
 }
 
+/** WhatsApp LID (linked identity) — 14+ digits, not a dialable phone. */
+export function isWhatsAppLidIdentifier(id: string): boolean {
+  const digits = id.replace(/\D/g, "");
+  if (digits.length < 14) return false;
+  if (digits.length === 11 && digits.startsWith("7")) return false;
+  if (digits.length >= 10 && digits.length <= 13) return false;
+  return true;
+}
+
+export function isWhatsAppPhoneIdentifier(id: string): boolean {
+  const digits = normalizeWhatsAppPhone(id);
+  return digits.length >= 10 && digits.length <= 13 && !isWhatsAppLidIdentifier(digits);
+}
+
 export function formatWhatsAppPhoneDisplay(phone: string): string {
   const digits = normalizeWhatsAppPhone(phone);
   if (digits.length === 11 && digits.startsWith("7")) {
@@ -18,6 +32,18 @@ export function formatWhatsAppPhoneDisplay(phone: string): string {
 export function phoneToWhatsAppJid(phone: string): string {
   const digits = normalizeWhatsAppPhone(phone);
   return `${digits}@s.whatsapp.net`;
+}
+
+export function lidToWhatsAppJid(lid: string): string {
+  const digits = lid.replace(/\D/g, "");
+  return `${digits}@lid`;
+}
+
+export function threadIdToWhatsAppJid(threadId: string): string {
+  if (isWhatsAppLidIdentifier(threadId)) {
+    return lidToWhatsAppJid(threadId);
+  }
+  return phoneToWhatsAppJid(threadId);
 }
 
 export function jidToPhone(jid: string | null | undefined): string | null {

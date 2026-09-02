@@ -23,6 +23,7 @@ import type {
   Operator,
   OutboundAttachmentPayload,
 } from "@/lib/types";
+import { isWhatsAppLidIdentifier } from "@/lib/integrations/whatsapp/phone";
 
 type ContactRow = {
   id: string;
@@ -2200,6 +2201,116 @@ export function getStats() {
     unassigned,
     byChannel,
   };
+}
+
+export function mergeWhatsAppConversationThreads(
+  lidThreadId: string,
+  phoneThreadId: string,
+): boolean {
+  if (!lidThreadId || !phoneThreadId || lidThreadId === phoneThreadId) {
+    return false;
+  }
+
+  const db = getDb();
+  const lidConv = db
+    .prepare(
+      "SELECT * FROM conversations WHERE channel = 'whatsapp' AND external_thread_id = ?",
+    )
+    .get(lidThreadId) as ConversationRow | undefined;
+  const phoneConv = db
+    .prepare(
+      "SELECT * FROM conversations WHERE channel = 'whatsapp' AND external_thread_id = ?",
+    )
+    .get(phoneThreadId) as ConversationRow | undefined;
+
+  if (!lidConv || !phoneConv || lidConv.id === phoneConv.id) {
+    return false;
+  }
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      "UPDATE messages SET conversation_id = ? WHERE conversation_id = ?",
+    ).run(phoneConv.id, lidConv.id);
+
+    const lidContact = db
+      .prepare("SELECT * FROM contacts WHERE id = ?")
+      .get(lidConv.contact_id) as ContactRow | undefined;
+    const phoneContact = db
+      .prepare("SELECT * FROM contacts WHERE id = ?")
+      .get(phoneConv.contact_id) as ContactRow | undefined;
+
+    const keepName =
+      phoneContact &&
+      !phoneContact.name.startsWith("+") &&
+      phoneContact.name.trim()
+        ? phoneContact.name
+        : lidContact?.name.startsWith("+")
+          ? lidContact.name
+          : phoneContact?.name ?? lidContact?.name;
+
+    if (keepName && phoneContact && keepName !== phoneContact.name) {
+      db.prepare("UPDATE contacts SET name = ? WHERE id = ?").run(
+        keepName,
+        phoneContact.id,
+      );
+    }
+
+    const unread = phoneConv.unread_count + lidConv.unread_count;
+    const awaiting =
+      phoneConv.awaiting_reply || lidConv.awaiting_reply ? 1 : 0;
+    const preview =
+      phoneConv.updated_at >= lidConv.updated_at
+        ? phoneConv.last_message_preview
+        : lidConv.last_message_preview;
+    const updatedAt =
+      phoneConv.updated_at >= lidConv.updated_at
+        ? phoneConv.updated_at
+        : lidConv.updated_at;
+
+    db.prepare(
+      `UPDATE conversations
+       SET unread_count = ?, awaiting_reply = ?, last_message_preview = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(unread, awaiting, preview, updatedAt, phoneConv.id);
+
+    db.prepare("DELETE FROM conversations WHERE id = ?").run(lidConv.id);
+
+    const remaining = db
+      .prepare("SELECT COUNT(*) AS count FROM conversations WHERE contact_id = ?")
+      .get(lidConv.contact_id) as { count: number };
+    if (remaining.count === 0) {
+      db.prepare("DELETE FROM contacts WHERE id = ?").run(lidConv.contact_id);
+    }
+  });
+
+  tx();
+  return true;
+}
+
+export async function mergeDuplicateWhatsAppConversations(
+  resolveLidToPhone: (lid: string) => Promise<string | null>,
+): Promise<number> {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT external_thread_id FROM conversations WHERE channel = 'whatsapp'`,
+    )
+    .all() as Array<{ external_thread_id: string | null }>;
+
+  let merged = 0;
+  for (const row of rows) {
+    const threadId = row.external_thread_id;
+    if (!threadId || !isWhatsAppLidIdentifier(threadId)) continue;
+
+    const phone = await resolveLidToPhone(threadId);
+    if (!phone) continue;
+
+    if (mergeWhatsAppConversationThreads(threadId, phone)) {
+      merged += 1;
+    }
+  }
+
+  return merged;
 }
 
 /** Fix Telegram message dates imported without createdAt (shows as "today"). */

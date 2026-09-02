@@ -4,9 +4,13 @@ import {
   isWhatsAppSocketLive,
 } from "@/lib/integrations/whatsapp/client";
 import {
+  resolveOutboundWhatsAppJid,
+} from "@/lib/integrations/whatsapp/lid";
+import {
   formatWhatsAppPhoneDisplay,
+  isWhatsAppLidIdentifier,
+  isWhatsAppPhoneIdentifier,
   normalizeWhatsAppPhone,
-  phoneToWhatsAppJid,
 } from "@/lib/integrations/whatsapp/phone";
 
 const MIN_SEND_INTERVAL_MS = 1500;
@@ -35,12 +39,18 @@ export async function sendWhatsAppMessage(
     };
   }
 
-  const phone = normalizeWhatsAppPhone(payload.externalThreadId);
-  if (!phone || phone.length < 10) {
+  const threadId = payload.externalThreadId.trim();
+  if (
+    !threadId ||
+    (!isWhatsAppPhoneIdentifier(threadId) && !isWhatsAppLidIdentifier(threadId))
+  ) {
     return { ok: false, error: "Некорректный номер WhatsApp" };
   }
 
-  const jid = phoneToWhatsAppJid(phone);
+  const jid = await resolveOutboundWhatsAppJid(sock, threadId);
+  if (!jid) {
+    return { ok: false, error: "Не удалось определить получателя WhatsApp" };
+  }
   const text = payload.content.trim();
 
   if (payload.attachments?.length) {
