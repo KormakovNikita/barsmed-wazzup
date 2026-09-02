@@ -21,7 +21,7 @@ import {
   clearWhatsAppSession,
 } from "@/lib/integrations/whatsapp/session-path";
 import { attachWhatsAppMessageHandler } from "@/lib/integrations/whatsapp/message-handler";
-import { resolveLidToPhone } from "@/lib/integrations/whatsapp/lid";
+import { resolveLidToPhone, resolvePhoneToLid } from "@/lib/integrations/whatsapp/lid";
 import { mergeDuplicateWhatsAppConversations } from "@/lib/store";
 
 let socket: WASocket | null = null;
@@ -117,7 +117,10 @@ async function createSocket(
       socketConnected = true;
       ensureHandler(sock);
       console.info("[whatsapp] connection open");
-      void mergeDuplicateWhatsAppConversations((lid) => resolveLidToPhone(sock, lid))
+      void mergeDuplicateWhatsAppConversations(
+        (lid) => resolveLidToPhone(sock, lid),
+        (phone) => resolvePhoneToLid(sock, phone),
+      )
         .then((merged) => {
           if (merged > 0) {
             console.info(`[whatsapp] merged ${merged} duplicate LID conversations`);

@@ -23,7 +23,7 @@ import type {
   Operator,
   OutboundAttachmentPayload,
 } from "@/lib/types";
-import { isWhatsAppLidIdentifier } from "@/lib/integrations/whatsapp/phone";
+import { isWhatsAppLidIdentifier, isWhatsAppPhoneIdentifier } from "@/lib/integrations/whatsapp/phone";
 
 type ContactRow = {
   id: string;
@@ -708,6 +708,102 @@ function findConversationByExternalThread(
   return row ? rowToConversation(row) : undefined;
 }
 
+export function registerWhatsAppThreadAlias(
+  lidThreadId: string,
+  phoneThreadId: string,
+): void {
+  if (
+    !lidThreadId ||
+    !phoneThreadId ||
+    lidThreadId === phoneThreadId ||
+    !isWhatsAppLidIdentifier(lidThreadId) ||
+    !isWhatsAppPhoneIdentifier(phoneThreadId)
+  ) {
+    return;
+  }
+
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO whatsapp_thread_aliases (alias_thread_id, canonical_thread_id)
+       VALUES (?, ?)`,
+    )
+    .run(lidThreadId, phoneThreadId);
+
+  mergeWhatsAppConversationThreads(lidThreadId, phoneThreadId);
+}
+
+export function getWhatsAppCanonicalThreadId(threadId: string): string {
+  const row = getDb()
+    .prepare(
+      "SELECT canonical_thread_id FROM whatsapp_thread_aliases WHERE alias_thread_id = ?",
+    )
+    .get(threadId) as { canonical_thread_id: string } | undefined;
+  return row?.canonical_thread_id ?? threadId;
+}
+
+function findWhatsAppConversation(threadId: string): Conversation | undefined {
+  const canonical = getWhatsAppCanonicalThreadId(threadId);
+  const candidates = [...new Set([canonical, threadId])];
+
+  for (const id of candidates) {
+    const conv = findConversationByExternalThread("whatsapp", id);
+    if (!conv) continue;
+
+    if (
+      conv.externalThreadId &&
+      conv.externalThreadId !== canonical &&
+      isWhatsAppPhoneIdentifier(canonical)
+    ) {
+      try {
+        getDb()
+          .prepare(
+            "UPDATE conversations SET external_thread_id = ? WHERE id = ?",
+          )
+          .run(canonical, conv.id);
+        return { ...conv, externalThreadId: canonical };
+      } catch {
+        mergeWhatsAppConversationThreads(conv.externalThreadId, canonical);
+        return findConversationByExternalThread("whatsapp", canonical);
+      }
+    }
+
+    return conv;
+  }
+
+  return undefined;
+}
+
+export function isWhatsAppMessageAlreadyStored(
+  channelMessageId: string,
+): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS found FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.channel = 'whatsapp'
+         AND (m.external_id = ? OR m.external_id = ?)
+       LIMIT 1`,
+    )
+    .get(channelMessageId, `wa-${channelMessageId}`) as
+    | { found: number }
+    | undefined;
+
+  if (row) return true;
+
+  const processed = getDb()
+    .prepare(
+      `SELECT 1 AS found FROM processed_external_ids
+       WHERE channel = 'whatsapp'
+         AND (external_message_id = ? OR external_message_id = ?)
+       LIMIT 1`,
+    )
+    .get(channelMessageId, `wa-${channelMessageId}`) as
+    | { found: number }
+    | undefined;
+
+  return Boolean(processed);
+}
+
 function findContactByChannelUser(
   channel: Channel,
   externalUserId: string,
@@ -1148,7 +1244,9 @@ export function processIncomingMessage(
   const threadId =
     payload.channel === "max"
       ? (maxChatId ?? maxUserId ?? payload.externalThreadId)
-      : payload.externalThreadId;
+      : payload.channel === "whatsapp"
+        ? getWhatsAppCanonicalThreadId(payload.externalThreadId)
+        : payload.externalThreadId;
 
   if (payload.channel === "max") {
     registerMaxKnownChat({
@@ -1169,10 +1267,9 @@ export function processIncomingMessage(
     const existing =
       payload.channel === "max"
         ? findMaxConversation(maxChatId, maxUserId)
-        : findConversationByExternalThread(
-            payload.channel,
-            threadId,
-          );
+        : payload.channel === "whatsapp"
+          ? findWhatsAppConversation(payload.externalThreadId)
+          : findConversationByExternalThread(payload.channel, threadId);
     if (!existing) return null;
     const lastMessage = findExistingMessageRow(existing.id, payload);
     if (!lastMessage) return null;
@@ -1228,7 +1325,9 @@ export function processIncomingMessage(
   let conversation =
     payload.channel === "max"
       ? findMaxConversation(maxChatId, maxUserId)
-      : findConversationByExternalThread(payload.channel, threadId);
+      : payload.channel === "whatsapp"
+        ? findWhatsAppConversation(payload.externalThreadId)
+        : findConversationByExternalThread(payload.channel, threadId);
   let created = false;
 
   if (
@@ -1296,7 +1395,9 @@ export function processIncomingMessage(
       conversation =
         (payload.channel === "max"
           ? findMaxConversation(maxChatId, maxUserId)
-          : findConversationByExternalThread(payload.channel, threadId)) ??
+          : payload.channel === "whatsapp"
+            ? findWhatsAppConversation(payload.externalThreadId)
+            : findConversationByExternalThread(payload.channel, threadId)) ??
         conversation;
     }
   } else if (!conversation.assignedTo) {
@@ -1304,7 +1405,9 @@ export function processIncomingMessage(
     conversation =
       (payload.channel === "max"
         ? findMaxConversation(maxChatId, maxUserId)
-        : findConversationByExternalThread(payload.channel, threadId)) ??
+        : payload.channel === "whatsapp"
+          ? findWhatsAppConversation(payload.externalThreadId)
+          : findConversationByExternalThread(payload.channel, threadId)) ??
       conversation;
   }
 
@@ -1807,7 +1910,9 @@ export async function sendMessage(
             ? getMaxIncomingMode() === "wazzup"
               ? `wazzup-max-${result.externalId}`
               : `max-${result.externalId}`
-            : conversation.channel === "max_personal" &&
+            : conversation.channel === "whatsapp"
+              ? `wa-${result.externalId}`
+              : conversation.channel === "max_personal" &&
                 !result.externalId.startsWith("max-personal-")
               ? `max-personal-${result.externalId}`
               : result.externalId,
@@ -2047,10 +2152,13 @@ export async function startOutboundConversation(params: {
     });
   }
 
-  let conversation = findConversationByExternalThread(
-    params.channel,
-    params.externalThreadId,
-  );
+  let conversation =
+    params.channel === "whatsapp"
+      ? findWhatsAppConversation(params.externalThreadId)
+      : findConversationByExternalThread(
+          params.channel,
+          params.externalThreadId,
+        );
 
   if (!conversation) {
     let contact = findContactByChannelUser(
@@ -2302,6 +2410,7 @@ export function mergeWhatsAppConversationThreads(
 
 export async function mergeDuplicateWhatsAppConversations(
   resolveLidToPhone: (lid: string) => Promise<string | null>,
+  resolvePhoneToLid?: (phone: string) => Promise<string | null>,
 ): Promise<number> {
   const db = getDb();
   const rows = db
@@ -2313,13 +2422,23 @@ export async function mergeDuplicateWhatsAppConversations(
   let merged = 0;
   for (const row of rows) {
     const threadId = row.external_thread_id;
-    if (!threadId || !isWhatsAppLidIdentifier(threadId)) continue;
+    if (!threadId) continue;
 
-    const phone = await resolveLidToPhone(threadId);
-    if (!phone) continue;
+    if (isWhatsAppLidIdentifier(threadId)) {
+      const phone = await resolveLidToPhone(threadId);
+      if (phone) {
+        registerWhatsAppThreadAlias(threadId, phone);
+        merged += 1;
+      }
+      continue;
+    }
 
-    if (mergeWhatsAppConversationThreads(threadId, phone)) {
-      merged += 1;
+    if (isWhatsAppPhoneIdentifier(threadId) && resolvePhoneToLid) {
+      const lid = await resolvePhoneToLid(threadId);
+      if (lid) {
+        registerWhatsAppThreadAlias(lid, threadId);
+        merged += 1;
+      }
     }
   }
 

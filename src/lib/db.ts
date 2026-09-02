@@ -177,6 +177,15 @@ function migrateSchema(database: Database.Database): void {
         ON conversations(awaiting_reply DESC, updated_at DESC)
     `);
   }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS whatsapp_thread_aliases (
+      alias_thread_id TEXT PRIMARY KEY,
+      canonical_thread_id TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_thread_aliases_canonical
+      ON whatsapp_thread_aliases(canonical_thread_id);
+  `);
 }
 
 export function isDatabaseEmpty(): boolean {

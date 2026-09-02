@@ -10,7 +10,9 @@ import {
 import pino from "pino";
 import { mediaPreviewLabel } from "@/lib/media-storage";
 import {
+  isWhatsAppMessageAlreadyStored,
   processIncomingMessage,
+  registerWhatsAppThreadAlias,
   updateWhatsAppMessageDeliveryStatus,
 } from "@/lib/store";
 import type { IncomingAttachmentPayload, MessageMediaType } from "@/lib/types";
@@ -21,8 +23,8 @@ import {
 } from "@/lib/integrations/whatsapp/phone";
 import {
   resolveInboundWhatsAppThreadId,
+  resolveLidToPhone,
 } from "@/lib/integrations/whatsapp/lid";
-import { mergeWhatsAppConversationThreads } from "@/lib/store";
 
 import { getWhatsAppMediaDownloadOptions } from "@/lib/integrations/whatsapp/proxy";
 
@@ -163,17 +165,27 @@ async function handleWhatsAppMessage(
   );
   if (!resolved?.threadId) return;
 
-  const { threadId: phone } = resolved;
+  const { threadId: resolvedThreadId } = resolved;
 
-  if (
-    isWhatsAppPhoneIdentifier(phone) &&
-    message.key.remoteJid &&
-    isLidUser(message.key.remoteJid)
-  ) {
-    const lid = jidDecode(message.key.remoteJid)?.user;
-    if (lid) {
-      mergeWhatsAppConversationThreads(lid, phone);
-    }
+  const lid =
+    message.key.remoteJid && isLidUser(message.key.remoteJid)
+      ? jidDecode(message.key.remoteJid)?.user ?? null
+      : null;
+  let phone = isWhatsAppPhoneIdentifier(resolvedThreadId)
+    ? resolvedThreadId
+    : null;
+  if (!phone && lid) {
+    phone = await resolveLidToPhone(sock, lid);
+  }
+
+  if (lid && phone) {
+    registerWhatsAppThreadAlias(lid, phone);
+  }
+
+  const threadId = phone ?? lid ?? resolvedThreadId;
+
+  if (message.key.fromMe && isWhatsAppMessageAlreadyStored(messageId)) {
+    return;
   }
 
   const contentType = getContentType(message.message);
@@ -202,11 +214,14 @@ async function handleWhatsAppMessage(
 
   const pushName = message.pushName?.trim();
   const senderName =
-    pushName || formatWhatsAppPhoneDisplay(phone);
+    pushName ||
+    (isWhatsAppPhoneIdentifier(threadId)
+      ? formatWhatsAppPhoneDisplay(threadId)
+      : "WhatsApp");
 
   processIncomingMessage({
     channel: "whatsapp",
-    externalThreadId: phone,
+    externalThreadId: threadId,
     externalMessageId: `wa-${messageId}`,
     channelMessageId: messageId,
     content: text,
@@ -242,7 +257,7 @@ export function attachWhatsAppMessageHandler(sock: WASocket): void {
     const pnUser = mapping.pn?.split("@")[0]?.replace(/\D/g, "") ?? "";
     const phone = pnUser ? normalizeWhatsAppPhone(pnUser) : "";
     if (lid && phone) {
-      mergeWhatsAppConversationThreads(lid, phone);
+      registerWhatsAppThreadAlias(lid, phone);
     }
   });
 
