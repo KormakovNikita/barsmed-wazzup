@@ -2228,6 +2228,19 @@ export function mergeWhatsAppConversationThreads(
   }
 
   const tx = db.transaction(() => {
+    const duplicateIds = db
+      .prepare(
+        `SELECT lm.id FROM messages lm
+         JOIN messages pm ON pm.conversation_id = ? AND pm.external_id = lm.external_id
+         WHERE lm.conversation_id = ? AND lm.external_id IS NOT NULL`,
+      )
+      .all(phoneConv.id, lidConv.id) as Array<{ id: string }>;
+
+    for (const { id } of duplicateIds) {
+      db.prepare("DELETE FROM message_attachments WHERE message_id = ?").run(id);
+      db.prepare("DELETE FROM messages WHERE id = ?").run(id);
+    }
+
     db.prepare(
       "UPDATE messages SET conversation_id = ? WHERE conversation_id = ?",
     ).run(phoneConv.id, lidConv.id);
