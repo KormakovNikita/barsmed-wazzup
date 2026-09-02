@@ -26,6 +26,8 @@ let listenerStarted = false;
 let connecting: Promise<WASocket | null> | null = null;
 let lastBootError: string | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let socketConnected = false;
+let sessionLoggedOut = false;
 const handlerAttached = new WeakSet<object>();
 
 const silentLogger = pino({ level: "silent" });
@@ -93,15 +95,19 @@ async function createSocket(
 
     if (connection === "open") {
       lastBootError = null;
+      sessionLoggedOut = false;
+      socketConnected = true;
       ensureHandler(sock);
       console.info("[whatsapp] connection open");
       hooks?.onConnectionOpen?.();
     }
 
     if (connection === "close") {
+      socketConnected = false;
       const statusCode = (lastDisconnect?.error as Boom | undefined)?.output
         ?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
+      sessionLoggedOut = loggedOut;
       const message =
         lastDisconnect?.error instanceof Error
           ? lastDisconnect.error.message
@@ -121,6 +127,9 @@ async function createSocket(
 
       if (!hooks && !loggedOut && isWhatsAppEnabled()) {
         scheduleReconnect();
+      } else if (loggedOut) {
+        listenerStarted = false;
+        socket = null;
       }
     }
   });
@@ -145,7 +154,7 @@ function scheduleReconnect(): void {
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
   if (!isWhatsAppEnabled()) return null;
 
-  if (socket?.user) {
+  if (socket?.user && socketConnected) {
     ensureHandler(socket);
     return socket;
   }
@@ -178,6 +187,10 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
       const instance = await createSocket(getWhatsAppSessionDir());
       if (!instance.user) {
         await waitForConnectionOpen(instance);
+      }
+      if (!socketConnected) {
+        lastBootError = lastBootError ?? "WhatsApp не подключён к серверу";
+        return null;
       }
       ensureHandler(instance);
       socket = instance;
@@ -224,6 +237,7 @@ export async function restartWhatsAppListener(): Promise<void> {
 
 export async function resetWhatsAppClient(): Promise<void> {
   listenerStarted = false;
+  socketConnected = false;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -299,7 +313,7 @@ export async function getWhatsAppStatus(): Promise<{
 
   try {
     const active = await getWhatsAppSocket();
-    if (!active?.user) {
+    if (!active?.user || !socketConnected) {
       return {
         enabled: true,
         configured,
@@ -310,9 +324,11 @@ export async function getWhatsAppStatus(): Promise<{
         profile: null,
         error:
           lastBootError ??
-          (configured
-            ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."
-            : "Подключите WhatsApp по QR-коду."),
+          (sessionLoggedOut
+            ? "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках."
+            : configured
+              ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."
+              : "Подключите WhatsApp по QR-коду."),
       };
     }
 

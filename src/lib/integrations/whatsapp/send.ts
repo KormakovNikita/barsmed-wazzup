@@ -27,7 +27,8 @@ export async function sendWhatsAppMessage(
   if (!sock?.user) {
     return {
       ok: false,
-      error: "WhatsApp не подключён. Проверьте прокси (VPN) и QR в настройках.",
+      error:
+        "WhatsApp не подключён. Отсканируйте QR в настройках и проверьте WHATSAPP_PROXY.",
     };
   }
 
