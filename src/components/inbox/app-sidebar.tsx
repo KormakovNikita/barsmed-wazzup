@@ -40,6 +40,12 @@ interface AppSidebarProps {
       mode: string;
       profile?: { name: string; username?: string } | null;
     };
+    maxPersonal?: {
+      enabled: boolean;
+      configured: boolean;
+      connected?: boolean;
+      profile?: { name?: string } | null;
+    };
     assignmentStrategy: string;
   } | null;
 }
@@ -122,6 +128,7 @@ export function AppSidebar({
                     channel === "whatsapp" && "bg-emerald-500",
                     channel === "telegram" && "bg-sky-500",
                     channel === "max" && "bg-violet-500",
+                    channel === "max_personal" && "bg-fuchsia-500",
                     channel === "vk" && "bg-blue-600",
                     channel === "instagram" && "bg-pink-500",
                   )}
@@ -166,6 +173,17 @@ export function AppSidebar({
                   className={cn(
                     "h-2 w-2 rounded-full",
                     integrationStatus.max.connected
+                      ? "bg-emerald-500"
+                      : "bg-muted-foreground/40",
+                  )}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted/50 px-2.5 py-2">
+                <span>MAX Personal</span>
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    integrationStatus.maxPersonal?.connected
                       ? "bg-emerald-500"
                       : "bg-muted-foreground/40",
                   )}

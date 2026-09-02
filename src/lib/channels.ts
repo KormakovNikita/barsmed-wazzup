@@ -19,6 +19,11 @@ export const CHANNEL_CONFIG: Record<
     color: "text-violet-700",
     bg: "bg-violet-100",
   },
+  max_personal: {
+    label: "MAX Personal",
+    color: "text-fuchsia-700",
+    bg: "bg-fuchsia-100",
+  },
   vk: {
     label: "VK",
     color: "text-blue-700",
@@ -35,6 +40,7 @@ export const ALL_CHANNELS: Channel[] = [
   "whatsapp",
   "telegram",
   "max",
+  "max_personal",
   "vk",
   "instagram",
 ];

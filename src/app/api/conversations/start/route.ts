@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTelegramMode, resolveTelegramPeer } from "@/lib/integrations/telegram";
+import { resolveMaxPersonalPeer } from "@/lib/integrations/max-personal";
 import { startOutboundConversation } from "@/lib/store";
 import type { Channel } from "@/lib/types";
 
@@ -86,8 +87,38 @@ export async function POST(request: Request) {
     });
   }
 
+  if (channel === "max_personal") {
+    const trimmedRecipient = recipient.trim();
+    const peer = await resolveMaxPersonalPeer(trimmedRecipient);
+    if (!peer) {
+      return NextResponse.json(
+        {
+          error:
+            "Не удалось найти пользователя MAX. Проверьте номер телефона или user_id",
+        },
+        { status: 404 },
+      );
+    }
+
+    const result = await startOutboundConversation({
+      channel,
+      externalThreadId: peer.chatId,
+      contactName: peer.name,
+      content: content.trim(),
+      operatorId,
+    });
+
+    if (!result) {
+      return NextResponse.json({ error: "Не удалось создать диалог" }, { status: 500 });
+    }
+
+    return NextResponse.json(result, {
+      status: result.error ? 502 : 200,
+    });
+  }
+
   return NextResponse.json(
-    { error: "Исходящие сообщения пока доступны для Telegram и MAX" },
+    { error: "Исходящие сообщения доступны для Telegram, MAX и MAX Personal" },
     { status: 400 },
   );
 }

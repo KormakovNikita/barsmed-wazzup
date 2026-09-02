@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MaxConnectPanel } from "@/components/settings/max-connect-panel";
+import { MaxPersonalConnectForm } from "@/components/settings/max-personal-connect-form";
 import { MaxProxyPanel } from "@/components/settings/max-proxy-panel";
 import { TelegramConnectForm } from "@/components/settings/telegram-connect-form";
 import { TelegramConnectPanel } from "@/components/settings/telegram-connect-panel";
@@ -39,6 +40,16 @@ export default function IntegrationsSettingsPage() {
       </details>
 
       <MaxConnectPanel />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">MAX Personal — исходящие сообщения</h2>
+        <p className="text-sm text-muted-foreground">
+          Личный аккаунт MAX для написания клиентам первыми. Отдельно от бота
+          Wazzup — используйте, когда нужно инициировать диалог по номеру
+          телефона или user_id.
+        </p>
+        <MaxPersonalConnectForm />
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">MAX — голосовые сообщения</h2>

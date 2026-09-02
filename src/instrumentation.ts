@@ -106,5 +106,14 @@ export async function register() {
         });
       }
     }
+
+    const { isMaxPersonalEnabled, startMaxPersonalListener } = await import(
+      "@/lib/integrations/max-personal",
+    );
+    if (isMaxPersonalEnabled()) {
+      startMaxPersonalListener().catch((error) => {
+        console.error("[instrumentation] MAX Personal listener failed:", error);
+      });
+    }
   }
 }

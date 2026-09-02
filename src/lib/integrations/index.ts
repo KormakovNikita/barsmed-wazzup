@@ -16,6 +16,12 @@ import {
   sendTelegramMessage,
   type TelegramUpdate,
 } from "./telegram";
+import {
+  getMaxPersonalStatus,
+  hasMaxPersonalSession,
+  isMaxPersonalEnabled,
+  sendMaxPersonalMessage,
+} from "./max-personal";
 import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, isMaxIncomingConfigured, sendWazzupMaxMessage, shouldMaxUsePolling } from "./wazzup-max";
 
 export async function dispatchOutboundMessage(
@@ -28,6 +34,8 @@ export async function dispatchOutboundMessage(
       return getMaxIncomingMode() === "wazzup"
         ? sendWazzupMaxMessage(payload)
         : sendMaxMessage(payload);
+    case "max_personal":
+      return sendMaxPersonalMessage(payload);
     default:
       return { ok: true };
   }
@@ -52,6 +60,9 @@ export async function deleteChannelMessage(params: {
 export function isChannelIntegrationActive(channel: Channel): boolean {
   if (channel === "telegram") return isTelegramConfigured();
   if (channel === "max") return isMaxIncomingConfigured();
+  if (channel === "max_personal") {
+    return isMaxPersonalEnabled() && hasMaxPersonalSession();
+  }
   return false;
 }
 
@@ -96,6 +107,7 @@ export async function getIntegrationStatus() {
       : null;
   const wazzupMax =
     maxIncoming === "wazzup" ? await getWazzupMaxStatus() : null;
+  const maxPersonal = await getMaxPersonalStatus();
 
   return {
     telegram: {
@@ -146,6 +158,13 @@ export async function getIntegrationStatus() {
             error: wazzupMax.error ?? null,
           }
         : null,
+    },
+    maxPersonal: {
+      enabled: maxPersonal.enabled,
+      configured: maxPersonal.configured,
+      connected: maxPersonal.connected,
+      profile: maxPersonal.profile,
+      error: maxPersonal.error ?? null,
     },
     webhookBaseUrl: webhookBase ?? null,
     maxWebhookBaseUrl: maxWebhookBase,

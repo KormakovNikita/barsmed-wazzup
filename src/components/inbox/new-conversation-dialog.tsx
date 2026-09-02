@@ -82,8 +82,8 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
         <DialogHeader>
           <DialogTitle>Новое сообщение клиенту</DialogTitle>
           <DialogDescription>
-            Telegram: укажите @username или номер телефона. MAX: user_id или
-            chat_id.
+            Telegram: @username или номер телефона. MAX Personal: номер
+            телефона или user_id. MAX (бот): user_id или chat_id.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,7 +99,8 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="telegram">Telegram</SelectItem>
-                <SelectItem value="max">MAX</SelectItem>
+                <SelectItem value="max_personal">MAX Personal</SelectItem>
+                <SelectItem value="max">MAX (бот)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -109,7 +110,11 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
             <Input
               id="recipient"
               placeholder={
-                channel === "telegram" ? "@username или +79001234567" : "user_id"
+                channel === "telegram"
+                  ? "@username или +79001234567"
+                  : channel === "max_personal"
+                    ? "+79001234567 или user_id"
+                    : "user_id"
               }
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}

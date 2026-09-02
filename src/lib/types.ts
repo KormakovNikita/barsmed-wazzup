@@ -2,6 +2,7 @@ export type Channel =
   | "whatsapp"
   | "telegram"
   | "max"
+  | "max_personal"
   | "vk"
   | "instagram";
 

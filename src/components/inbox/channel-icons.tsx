@@ -124,6 +124,7 @@ const CHANNEL_ICON_COMPONENTS: Record<
   whatsapp: WhatsAppIcon,
   telegram: TelegramIcon,
   max: MaxIcon,
+  max_personal: MaxIcon,
   vk: VkIcon,
   instagram: InstagramIcon,
 };
@@ -135,6 +136,7 @@ const CHANNEL_GLYPH_COMPONENTS: Record<
   whatsapp: WhatsAppGlyph,
   telegram: TelegramGlyph,
   max: MaxIcon,
+  max_personal: MaxIcon,
   vk: VkGlyph,
   instagram: InstagramIcon,
 };

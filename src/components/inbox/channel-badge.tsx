@@ -7,6 +7,7 @@ const AVATAR_BADGE_STYLES: Record<Channel, string> = {
   whatsapp: "bg-[#25D366]",
   telegram: "bg-[#229ED9]",
   max: "bg-transparent",
+  max_personal: "bg-transparent ring-fuchsia-400",
   vk: "bg-[#0077FF]",
   instagram: "bg-gradient-to-br from-[#F58529] via-[#DD2A7B] to-[#8134AF]",
 };
@@ -18,7 +19,7 @@ export function ChannelAvatarBadge({
   channel: Channel;
   className?: string;
 }) {
-  const isMax = channel === "max";
+  const isMax = channel === "max" || channel === "max_personal";
 
   return (
     <span
@@ -50,12 +51,13 @@ export function ChannelBadge({
   const config = CHANNEL_CONFIG[channel];
   const boxSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const iconSize = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
-  const isMax = channel === "max";
+  const isMax = channel === "max" || channel === "max_personal";
 
   const badgeBg: Record<Channel, string> = {
     whatsapp: "bg-[#25D366]",
     telegram: "bg-[#229ED9]",
     max: "",
+    max_personal: "",
     vk: "bg-[#0077FF]",
     instagram: "bg-gradient-to-br from-[#F58529] via-[#DD2A7B] to-[#8134AF]",
   };

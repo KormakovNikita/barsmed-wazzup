@@ -1632,7 +1632,12 @@ export async function sendMessage(
               conversation.externalThreadId,
               conversation.contactId,
             )
-        : {};
+        : conversation.channel === "max_personal"
+          ? {
+              chatId: conversation.externalThreadId,
+              userId: conversation.externalThreadId,
+            }
+          : {};
 
     const publicBase = getPublicAppBaseUrl();
     const attachmentUrls =
@@ -1669,7 +1674,10 @@ export async function sendMessage(
             ? getMaxIncomingMode() === "wazzup"
               ? `wazzup-max-${result.externalId}`
               : `max-${result.externalId}`
-            : result.externalId,
+            : conversation.channel === "max_personal" &&
+                !result.externalId.startsWith("max-personal-")
+              ? `max-personal-${result.externalId}`
+              : result.externalId,
         );
     }
     updateMessage(message);

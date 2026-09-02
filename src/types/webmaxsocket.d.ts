@@ -24,6 +24,15 @@ declare module "webmaxsocket" {
       backward?: number,
       forward?: number,
     ): Promise<MaxProxyMessage[]>;
+    sendMessage(params: {
+      chatId: string | number;
+      text: string;
+    }): Promise<{ id?: string | number } | unknown>;
+    getUserByPhone(phone: string): Promise<{
+      id?: number;
+      firstname?: string;
+      lastname?: string;
+    } | null>;
     sendAndWait(
       opcode: number,
       payload: Record<string, unknown>,
