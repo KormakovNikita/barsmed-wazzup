@@ -1,11 +1,10 @@
-import type { OutboundMessagePayload } from "@/lib/types";
+import type { AnyMessageContent } from "@whiskeysockets/baileys/lib/Types/Message.js";
+import type { OutboundAttachmentPayload, OutboundMessagePayload } from "@/lib/types";
 import {
   getWhatsAppSocket,
   isWhatsAppSocketLive,
 } from "@/lib/integrations/whatsapp/client";
-import {
-  resolveOutboundWhatsAppJid,
-} from "@/lib/integrations/whatsapp/lid";
+import { resolveOutboundWhatsAppJid } from "@/lib/integrations/whatsapp/lid";
 import {
   formatWhatsAppPhoneDisplay,
   isWhatsAppLidIdentifier,
@@ -25,6 +24,36 @@ function waitForSendSlot(): Promise<void> {
   }
   lastSendAt = now + waitMs;
   return new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
+function buildWhatsAppMessageContent(
+  attachment: OutboundAttachmentPayload,
+  caption?: string,
+): AnyMessageContent {
+  const text = caption?.trim() || undefined;
+
+  switch (attachment.type) {
+    case "image":
+    case "sticker":
+      return { image: attachment.buffer, caption: text, mimetype: attachment.mimeType };
+    case "video":
+      return { video: attachment.buffer, caption: text, mimetype: attachment.mimeType };
+    case "voice":
+      return {
+        audio: attachment.buffer,
+        ptt: true,
+        mimetype: attachment.mimeType || "audio/ogg; codecs=opus",
+      };
+    case "audio":
+      return { audio: attachment.buffer, mimetype: attachment.mimeType };
+    default:
+      return {
+        document: attachment.buffer,
+        mimetype: attachment.mimeType || "application/octet-stream",
+        fileName: attachment.fileName ?? "file",
+        caption: text,
+      };
+  }
 }
 
 export async function sendWhatsAppMessage(
@@ -51,16 +80,11 @@ export async function sendWhatsAppMessage(
   if (!jid) {
     return { ok: false, error: "Не удалось определить получателя WhatsApp" };
   }
+
   const text = payload.content.trim();
+  const attachment = payload.attachments?.[0];
 
-  if (payload.attachments?.length) {
-    return {
-      ok: false,
-      error: "Отправка файлов через WhatsApp пока не поддерживается",
-    };
-  }
-
-  if (!text) {
+  if (!text && !attachment) {
     return { ok: false, error: "Пустое сообщение" };
   }
 
@@ -77,7 +101,11 @@ export async function sendWhatsAppMessage(
           }
         : undefined;
 
-    const result = await sock.sendMessage(jid, { text }, { quoted });
+    const content: AnyMessageContent = attachment
+      ? buildWhatsAppMessageContent(attachment, text)
+      : { text };
+
+    const result = await sock.sendMessage(jid, content, { quoted });
 
     const messageId = result?.key?.id;
     if (!messageId) {
@@ -88,7 +116,7 @@ export async function sendWhatsAppMessage(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Ошибка отправки WhatsApp";
-    if (/proxy|timeout|econnrefused|enotfound|network/i.test(message)) {
+    if (/proxy|timeout|econnrefused|enotfound|network|fetch failed/i.test(message)) {
       return {
         ok: false,
         error:

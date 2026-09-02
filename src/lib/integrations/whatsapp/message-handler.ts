@@ -24,6 +24,8 @@ import {
 } from "@/lib/integrations/whatsapp/lid";
 import { mergeWhatsAppConversationThreads } from "@/lib/store";
 
+import { getWhatsAppMediaDownloadOptions } from "@/lib/integrations/whatsapp/proxy";
+
 const mediaLogger = pino({ level: "silent" });
 const processedMessageIds = new Set<string>();
 
@@ -73,7 +75,7 @@ async function extractAttachments(
     const buffer = (await downloadMediaMessage(
       message,
       "buffer",
-      {},
+      getWhatsAppMediaDownloadOptions(),
       { reuploadRequest: sock.updateMediaMessage, logger: mediaLogger },
     )) as Buffer;
 

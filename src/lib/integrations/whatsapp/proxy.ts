@@ -1,9 +1,12 @@
 import type { Agent as HttpsAgent } from "node:https";
+import { Socks5ProxyAgent } from "undici";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import { getSetting } from "@/lib/settings-store";
 
 export type WhatsAppProxySource = "whatsapp" | null;
+
+let cachedFetchDispatcher: Socks5ProxyAgent | undefined;
 
 export function parseWhatsAppProxyUrl(raw: string): string | null {
   const trimmed = raw.trim();
@@ -58,6 +61,24 @@ export function createWhatsAppProxyAgent(): HttpsAgent | undefined {
     return new SocksProxyAgent(proxyUrl) as unknown as HttpsAgent;
   }
   return new HttpsProxyAgent(proxyUrl) as unknown as HttpsAgent;
+}
+
+/** Undici dispatcher for media download/upload fetch (needs SOCKS5 in RU). */
+export function createWhatsAppFetchDispatcher(): Socks5ProxyAgent | undefined {
+  const proxyUrl = getWhatsAppProxyUrl();
+  if (!proxyUrl || !/^socks/i.test(proxyUrl)) return undefined;
+
+  if (!cachedFetchDispatcher) {
+    cachedFetchDispatcher = new Socks5ProxyAgent(proxyUrl);
+  }
+  return cachedFetchDispatcher;
+}
+
+export function getWhatsAppMediaDownloadOptions(): {
+  options?: RequestInit;
+} {
+  const dispatcher = createWhatsAppFetchDispatcher();
+  return dispatcher ? { options: { dispatcher } as RequestInit } : {};
 }
 
 export function maskProxyUrl(raw: string): string {
