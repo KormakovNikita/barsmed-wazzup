@@ -313,10 +313,11 @@ export function ChatPanel({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function insertText(text: string) {
+  function insertText(text: string, file?: File) {
     const textarea = textareaRef.current;
     if (!textarea) {
       setDraft(text);
+      if (file) setSelectedFile(file);
       return;
     }
 
@@ -324,6 +325,7 @@ export function ChatPanel({
     const end = textarea.selectionEnd ?? draft.length;
     const next = draft.slice(0, start) + text + draft.slice(end);
     setDraft(next);
+    if (file) setSelectedFile(file);
 
     requestAnimationFrame(() => {
       textarea.focus();
@@ -336,11 +338,11 @@ export function ChatPanel({
     insertText(emoji);
   }
 
-  async function sendTemplateText(text: string) {
-    if (!text.trim() || sending) return;
+  async function sendTemplateText(text: string, file?: File) {
+    if ((!text.trim() && !file) || sending) return;
     setSending(true);
     try {
-      await onSendMessage(text, undefined, replyToMessage?.id);
+      await onSendMessage(text, file, replyToMessage?.id);
       setDraft("");
       setSelectedFile(null);
       setReplyToMessage(null);
