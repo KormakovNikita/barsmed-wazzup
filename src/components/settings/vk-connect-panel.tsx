@@ -86,7 +86,7 @@ export function VkConnectPanel() {
 
       setAccessToken("");
       setMessage(
-        "Настройки VK сохранены. Перезапустите HubDesk или подождите — Long Poll подключится автоматически.",
+        "Настройки VK сохранены. Сообщения начнут поступать в inbox в течение нескольких секунд.",
       );
       await load();
     } catch (err) {

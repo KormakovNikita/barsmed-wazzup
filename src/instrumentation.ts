@@ -116,12 +116,10 @@ export async function register() {
       });
     }
 
-    const { isVkConfigured, startVkLongPollListener } = await import(
+    const { startVkLongPollListener } = await import(
       "@/lib/integrations/vk",
     );
-    if (isVkConfigured()) {
-      startVkLongPollListener();
-    }
+    startVkLongPollListener();
 
     const { reconcileAllConversationReplyStates } = await import("@/lib/store");
     const reconciled = reconcileAllConversationReplyStates();

@@ -78,11 +78,7 @@ export async function drainVkLongPollUpdates(): Promise<
 }
 
 export function startVkLongPollListener(): void {
-  if (
-    listenerStarted ||
-    !isVkConfigured() ||
-    shouldVkUseCallback()
-  ) {
+  if (listenerStarted || shouldVkUseCallback()) {
     return;
   }
 
@@ -90,6 +86,7 @@ export function startVkLongPollListener(): void {
   const intervalMs = getVkPollIntervalMs();
 
   const tick = () => {
+    if (!isVkConfigured()) return;
     drainVkLongPollUpdates().catch((error) => {
       console.error("[vk-long-poll] failed:", error);
     });
