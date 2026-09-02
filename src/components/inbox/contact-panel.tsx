@@ -23,7 +23,7 @@ export function ContactPanel({
 }: ContactPanelProps) {
   if (!conversation) {
     return (
-      <div className="hidden w-80 shrink-0 border-l border-border/60 bg-card/30 lg:flex lg:items-center lg:justify-center">
+      <div className="hidden w-80 shrink-0 border-l border-border/60 bg-white lg:flex lg:items-center lg:justify-center">
         <div className="px-6 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
             <UserCheck className="h-5 w-5 text-muted-foreground" />
@@ -40,7 +40,7 @@ export function ContactPanel({
   const stageLabel = DEAL_STAGE_LABELS[contact.dealStage] ?? contact.dealStage;
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-l border-border/60 bg-card/30 lg:flex">
+    <aside className="hidden w-80 shrink-0 flex-col border-l border-border/60 bg-white lg:flex">
       <ScrollArea className="flex-1">
         <div className="p-5">
           <div className="flex flex-col items-center rounded-2xl border border-border/60 bg-background p-5 text-center shadow-sm">

@@ -512,7 +512,7 @@ export function InboxApp() {
       />
 
       <div className="hidden h-full min-h-0 w-[340px] shrink-0 flex-col border-r border-border/60 md:flex">
-        <div className="border-b border-border/60 bg-card/30 p-3">
+        <div className="border-b border-border/60 bg-white p-3">
           <NewConversationDialog
             onCreated={(id) => {
               setSelectedId(id);

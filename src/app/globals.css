@@ -63,15 +63,15 @@
   --popover-foreground: #0f2f2d;
   --primary: #0b605b;
   --primary-foreground: #ffffff;
-  --secondary: #eef8f1;
+  --secondary: #f5f5f5;
   --secondary-foreground: #0b605b;
-  --muted: #f3faf5;
+  --muted: #f5f5f5;
   --muted-foreground: #5a7874;
-  --accent: #e8f8ec;
+  --accent: #f0f0f0;
   --accent-foreground: #0b605b;
   --destructive: #dc2626;
-  --border: #dceee4;
-  --input: #e8f2ec;
+  --border: #e5e5e5;
+  --input: #f5f5f5;
   --ring: #46c162;
   --chart-1: #0b605b;
   --chart-2: #46c162;
@@ -83,9 +83,9 @@
   --sidebar-foreground: #0f2f2d;
   --sidebar-primary: #0b605b;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef8f1;
+  --sidebar-accent: #f5f5f5;
   --sidebar-accent-foreground: #0b605b;
-  --sidebar-border: #dceee4;
+  --sidebar-border: #e5e5e5;
   --sidebar-ring: #46c162;
 }
 
@@ -132,12 +132,7 @@
 
 @layer utilities {
   .bg-chat-pattern {
-    background-color: #fcfefc;
-    background-image: radial-gradient(
-      rgb(11 96 91 / 4%) 1px,
-      transparent 1px
-    );
-    background-size: 20px 20px;
+    background-color: #ffffff;
   }
 
   .bubble-out {
@@ -154,7 +149,7 @@
   }
 
   .glass-panel {
-    background: rgb(255 255 255 / 88%);
+    background: #ffffff;
     backdrop-filter: blur(12px);
   }
 
