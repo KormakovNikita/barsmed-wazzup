@@ -24,14 +24,15 @@ export function MaxPersonalConnectForm() {
     fetch("/api/integrations/max-personal/status")
       .then((res) => res.json())
       .then((data) => {
-        setEnabled(data.enabled !== false);
+        setEnabled(data.enabled === true);
         setConnected(Boolean(data.connected));
         if (data.connected && data.profile) {
           setProfile(data.profile);
+          setError(null);
         } else {
           setProfile(null);
+          if (data.error) setError(data.error);
         }
-        if (data.error) setError(data.error);
       })
       .catch(() => {});
   }, []);
@@ -116,16 +117,37 @@ export function MaxPersonalConnectForm() {
 
   if (!enabled) {
     return (
-      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-        Канал отключён. Установите{" "}
-        <code className="text-xs">MAX_PERSONAL_ENABLED=true</code> в переменных
-        окружения.
+      <div className="space-y-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        <p>
+          Канал отключён на сервере. Чтобы включить, задайте{" "}
+          <code className="text-xs">MAX_PERSONAL_ENABLED=true</code> и
+          перезапустите приложение.
+        </p>
+        <p className="text-xs">
+          Используйте MAX Personal только если понимаете риски: неофициальный API
+          может привести к блокировке аккаунта MAX.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4 rounded-lg border p-4">
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+        <p className="font-medium">Важно</p>
+        <ul className="mt-2 list-inside list-disc space-y-1">
+          <li>Это личный аккаунт MAX, не бот Wazzup</li>
+          <li>MAX может ограничить аккаунт при автоматической отправке</li>
+          <li>
+            Не нажимайте «Завершить все сессии» в MAX, пока HubDesk подключён
+          </li>
+          <li>
+            При блокировке используйте канал{" "}
+            <strong>MAX (бот Wazzup)</strong> для переписки
+          </li>
+        </ul>
+      </div>
+
       {connected && profile ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-950/30">

@@ -17,7 +17,7 @@ export function getMaxPersonalSessionFilePath(): string {
 }
 
 export function isMaxPersonalEnabled(): boolean {
-  return process.env.MAX_PERSONAL_ENABLED !== "false";
+  return process.env.MAX_PERSONAL_ENABLED === "true";
 }
 
 export function getMaxPersonalSessionName(): string {

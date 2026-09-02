@@ -1,4 +1,5 @@
 import { processMaxPersonalMessage } from "@/lib/integrations/max-personal/message-handler";
+import { bootMaxPersonalClient } from "@/lib/integrations/max-personal/session-boot";
 import {
   ensureMaxPersonalSessionDir,
   getMaxPersonalSessionName,
@@ -10,6 +11,7 @@ import { WebMaxClient, type MaxProxyMessage } from "webmaxsocket";
 let client: WebMaxClient | null = null;
 let listenerStarted = false;
 let connecting: Promise<WebMaxClient | null> | null = null;
+let lastBootError: string | null = null;
 const processedMessageIds = new Set<string>();
 
 function rememberProcessed(messageId: string): boolean {
@@ -57,7 +59,19 @@ export async function getMaxPersonalClient(): Promise<WebMaxClient | null> {
       saveToken: true,
     });
 
-    await instance.start();
+    const boot = await bootMaxPersonalClient(instance);
+    if (!boot.ok) {
+      lastBootError = boot.error ?? "Сессия MAX Personal недоступна";
+      console.warn("[max-personal]", lastBootError);
+      try {
+        await instance.stop();
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+
+    lastBootError = null;
     client = instance;
     return instance;
   })();
@@ -105,6 +119,7 @@ export async function startMaxPersonalListener(): Promise<void> {
 
 export async function resetMaxPersonalClient(): Promise<void> {
   listenerStarted = false;
+  lastBootError = null;
   if (client) {
     try {
       await client.stop();
@@ -142,7 +157,11 @@ export async function getMaxPersonalStatus(): Promise<{
         configured,
         connected: false,
         profile: null,
-        error: configured ? "Сессия есть, но подключение не удалось" : null,
+        error:
+          lastBootError ??
+          (configured
+            ? "Сессия есть, но подключение не удалось. Войдите по QR заново."
+            : null),
       };
     }
 

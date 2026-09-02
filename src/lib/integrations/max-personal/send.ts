@@ -2,6 +2,20 @@ import type { OutboundMessagePayload } from "@/lib/types";
 import { getMaxPersonalClient } from "@/lib/integrations/max-personal/client";
 import { ensureMaxPersonalDialogChatId } from "@/lib/integrations/max-personal/dialog";
 
+const MIN_SEND_INTERVAL_MS = 2500;
+let lastSendAt = 0;
+
+function waitForSendSlot(): Promise<void> {
+  const now = Date.now();
+  const waitMs = lastSendAt + MIN_SEND_INTERVAL_MS - now;
+  if (waitMs <= 0) {
+    lastSendAt = now;
+    return Promise.resolve();
+  }
+  lastSendAt = now + waitMs;
+  return new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
 function extractMessageId(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
 
@@ -61,6 +75,7 @@ export async function sendMaxPersonalMessage(
   const userId = payload.maxUserId ?? payload.externalThreadId;
 
   try {
+    await waitForSendSlot();
     const chatId = await ensureMaxPersonalDialogChatId(client, userId);
     const result = await client.sendMessage({ chatId, text });
 
@@ -84,9 +99,14 @@ export async function sendMaxPersonalMessage(
       externalId: `max-personal-${messageId}`,
     };
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Ошибка отправки MAX Personal",
-    };
+    const message = error instanceof Error ? error.message : "Ошибка отправки MAX Personal";
+    if (/block|ban|restrict|заблок|огранич/i.test(message)) {
+      return {
+        ok: false,
+        error:
+          "Аккаунт MAX ограничен. Используйте канал MAX (бот Wazzup) или обратитесь в поддержку MAX.",
+      };
+    }
+    return { ok: false, error: message };
   }
 }

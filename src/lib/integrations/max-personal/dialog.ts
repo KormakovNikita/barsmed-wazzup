@@ -98,6 +98,12 @@ export async function ensureMaxPersonalDialogChatId(
   client: WebMaxClient,
   userId: string,
 ): Promise<string> {
+  try {
+    await client.sync();
+  } catch {
+    // sync may fail when session expired; find/create will surface the error
+  }
+
   const existing = await findMaxPersonalDialogChatId(client, userId);
   if (existing) return existing;
   return createMaxPersonalDialog(client, userId);
