@@ -8,7 +8,7 @@ const OUTGOING_FLAG = 2;
 
 export interface VkCallbackMessage {
   id: number;
-  date: number;
+  date?: number;
   peer_id: number;
   from_id: number;
   text?: string;
@@ -89,13 +89,9 @@ export function parseVkLongPollUpdate(
   };
 }
 
-export async function parseVkCallbackEvent(
-  event: VkCallbackEvent,
+export async function parseVkApiMessage(
+  message: VkCallbackMessage,
 ): Promise<IncomingMessagePayload | null> {
-  if (event.type !== "message_new") return null;
-
-  const message = event.object?.message;
-  if (!message) return null;
   if (message.out === 1) return null;
 
   const text = message.text?.trim() ?? "";
@@ -116,6 +112,17 @@ export async function parseVkCallbackEvent(
       ? String(message.reply_message.id)
       : undefined,
   };
+}
+
+export async function parseVkCallbackEvent(
+  event: VkCallbackEvent,
+): Promise<IncomingMessagePayload | null> {
+  if (event.type !== "message_new") return null;
+
+  const message = event.object?.message;
+  if (!message) return null;
+
+  return parseVkApiMessage(message);
 }
 
 export async function enrichVkLongPollPayload(

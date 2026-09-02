@@ -156,13 +156,60 @@ export async function getVkUsers(
   { ok: true; users: VkUserInfo[] } | { ok: false; error: string }
 > {
   if (!userIds.length) return { ok: true, users: [] };
-  const result = await vkMethod<VkUserInfo[]>(
+  const result = await vkMethod<VkUserInfo[] | { profiles?: VkUserInfo[] }>(
     "users.get",
     { user_ids: userIds.join(",") },
     accessToken,
   );
   if (!result.ok) return result;
-  return { ok: true, users: result.data };
+  const users = Array.isArray(result.data)
+    ? result.data
+    : (result.data.profiles ?? []);
+  return { ok: true, users };
+}
+
+export interface VkConversationMessage {
+  id: number;
+  peer_id: number;
+  from_id: number;
+  text?: string;
+  out?: number;
+  reply_message?: { id: number };
+}
+
+export interface VkConversationItem {
+  conversation: {
+    peer: { id: number; type: string };
+    last_message_id: number;
+    unread_count?: number;
+  };
+  last_message?: VkConversationMessage;
+}
+
+export async function getVkConversations(
+  accessToken: string,
+  params?: { filter?: "all" | "unread" | "unanswered"; count?: number },
+): Promise<
+  | { ok: true; items: VkConversationItem[] }
+  | { ok: false; error: string; scopeDenied?: boolean }
+> {
+  const result = await vkMethod<{ items?: VkConversationItem[] }>(
+    "messages.getConversations",
+    {
+      filter: params?.filter ?? "unanswered",
+      count: params?.count ?? 30,
+      extended: 0,
+    },
+    accessToken,
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      scopeDenied: result.error.includes("(15)"),
+    };
+  }
+  return { ok: true, items: result.data.items ?? [] };
 }
 
 export interface VkLongPollResponse {

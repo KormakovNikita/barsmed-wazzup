@@ -1,5 +1,6 @@
 import { processIncomingMessage } from "@/lib/store";
 import { getVkLongPollServer, pollVkLongPoll, type VkLongPollServer } from "./api";
+import { drainVkMessagesUpdates } from "./messages-poll";
 import {
   enrichVkLongPollPayload,
   parseVkLongPollUpdate,
@@ -14,6 +15,8 @@ import {
 
 let listenerStarted = false;
 let longPollServer: VkLongPollServer | null = null;
+let useMessagesPoll = false;
+let longPollDisabledLogged = false;
 
 async function refreshLongPollServer(): Promise<boolean> {
   const groupId = getVkGroupId();
@@ -22,22 +25,29 @@ async function refreshLongPollServer(): Promise<boolean> {
 
   const result = await getVkLongPollServer(groupId, token);
   if (!result.ok) {
-    console.error("[vk-long-poll] getLongPollServer failed:", result.error);
+    if (result.error.includes("(15)")) {
+      useMessagesPoll = true;
+      if (!longPollDisabledLogged) {
+        console.info(
+          "[vk] Long Poll недоступен для этого токена — используем messages.getConversations",
+        );
+        longPollDisabledLogged = true;
+      }
+    } else {
+      console.error("[vk-long-poll] getLongPollServer failed:", result.error);
+    }
     longPollServer = null;
     return false;
   }
 
   longPollServer = result.server;
+  useMessagesPoll = false;
   return true;
 }
 
-export async function drainVkLongPollUpdates(): Promise<
+async function drainVkLongPollOnly(): Promise<
   { conversationId: string; created: boolean }[]
 > {
-  if (!isVkConfigured() || shouldVkUseCallback()) {
-    return [];
-  }
-
   if (!longPollServer) {
     const ready = await refreshLongPollServer();
     if (!ready || !longPollServer) return [];
@@ -77,6 +87,24 @@ export async function drainVkLongPollUpdates(): Promise<
   return events;
 }
 
+export async function drainVkLongPollUpdates(): Promise<
+  { conversationId: string; created: boolean }[]
+> {
+  if (!isVkConfigured() || shouldVkUseCallback()) {
+    return [];
+  }
+
+  if (useMessagesPoll) {
+    return drainVkMessagesUpdates();
+  }
+
+  const events = await drainVkLongPollOnly();
+  if (useMessagesPoll) {
+    return [...events, ...(await drainVkMessagesUpdates())];
+  }
+  return events;
+}
+
 export function startVkLongPollListener(): void {
   if (listenerStarted || shouldVkUseCallback()) {
     return;
@@ -88,11 +116,11 @@ export function startVkLongPollListener(): void {
   const tick = () => {
     if (!isVkConfigured()) return;
     drainVkLongPollUpdates().catch((error) => {
-      console.error("[vk-long-poll] failed:", error);
+      console.error("[vk] poll failed:", error);
     });
   };
 
   tick();
   setInterval(tick, intervalMs);
-  console.info("[vk-long-poll] listener started");
+  console.info("[vk] listener started");
 }
