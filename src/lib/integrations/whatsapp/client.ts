@@ -39,7 +39,7 @@ function ensureHandler(sock: WASocket): void {
 }
 
 function waitForConnectionOpen(sock: WASocket, timeoutMs = 45000): Promise<void> {
-  if (sock.user) return Promise.resolve();
+  if (socketConnected && socket === sock) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -52,15 +52,29 @@ function waitForConnectionOpen(sock: WASocket, timeoutMs = 45000): Promise<void>
       sock.ev.off("connection.update", onUpdate);
     };
 
-    const onUpdate = (update: { connection?: string; qr?: string }) => {
+    const onUpdate = (update: { connection?: string }) => {
       if (update.connection === "open") {
         cleanup();
         resolve();
+      }
+      if (update.connection === "close") {
+        cleanup();
+        reject(new Error(lastBootError ?? "Соединение WhatsApp закрыто"));
       }
     };
 
     sock.ev.on("connection.update", onUpdate);
   });
+}
+
+function shouldReconnectAfterClose(statusCode: number | undefined): boolean {
+  if (statusCode == null) return true;
+  return (
+    statusCode !== DisconnectReason.loggedOut &&
+    statusCode !== DisconnectReason.badSession &&
+    statusCode !== DisconnectReason.forbidden &&
+    statusCode !== DisconnectReason.multideviceMismatch
+  );
 }
 
 async function createSocket(
@@ -125,7 +139,7 @@ async function createSocket(
       console.warn("[whatsapp] connection closed:", lastBootError ?? message);
       hooks?.onConnectionClose?.(lastBootError ?? message);
 
-      if (!hooks && !loggedOut && isWhatsAppEnabled()) {
+      if (!hooks && shouldReconnectAfterClose(statusCode) && isWhatsAppEnabled()) {
         scheduleReconnect();
       } else if (loggedOut) {
         listenerStarted = false;
@@ -185,9 +199,7 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
       }
 
       const instance = await createSocket(getWhatsAppSessionDir());
-      if (!instance.user) {
-        await waitForConnectionOpen(instance);
-      }
+      await waitForConnectionOpen(instance);
       if (!socketConnected) {
         lastBootError = lastBootError ?? "WhatsApp не подключён к серверу";
         return null;
@@ -213,7 +225,7 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
 
 export async function startWhatsAppListener(): Promise<void> {
   if (!isWhatsAppEnabled()) return;
-  if (listenerStarted && socket?.user) return;
+  if (listenerStarted && socketConnected) return;
 
   try {
     const active = await getWhatsAppSocket();

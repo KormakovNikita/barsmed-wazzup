@@ -45,6 +45,8 @@ export function getPendingWhatsAppQr(authId: string): PendingWhatsAppQr | null {
 
 export async function startWhatsAppQrAuth(): Promise<{ authId: string }> {
   cleanupExpired();
+  await resetWhatsAppClient();
+
   const authId = `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const entry: PendingWhatsAppQr = {
@@ -62,17 +64,16 @@ export async function startWhatsAppQrAuth(): Promise<{ authId: string }> {
     onConnectionOpen: () => {
       entry.status = "done";
       void (async () => {
-        await resetWhatsAppClient();
-        await startWhatsAppListener();
-      })();
-      setTimeout(() => {
         pending.delete(authId);
         try {
-          entry.client.end(undefined);
+          await entry.client.end(undefined);
         } catch {
           // ignore
         }
-      }, 60_000);
+        await resetWhatsAppClient();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await startWhatsAppListener();
+      })();
     },
     onConnectionClose: (error) => {
       if (entry.status === "done") return;
