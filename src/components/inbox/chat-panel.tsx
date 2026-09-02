@@ -80,7 +80,18 @@ function messageSupportsReply(
 ): boolean {
   if (channel === "telegram") return true;
   if (channel === "max") {
-    return Boolean(msg.externalId?.startsWith("mid."));
+    if (!msg.externalId) return false;
+    if (msg.externalId.startsWith("mid.")) return true;
+    if (/^wazzup-max-/i.test(msg.externalId)) return true;
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        msg.externalId,
+      )
+    ) {
+      return true;
+    }
+    if (/^max-(mid\.)/.test(msg.externalId)) return true;
+    return false;
   }
   return false;
 }
@@ -411,7 +422,7 @@ export function ChatPanel({
     if (!conversation || !canReplyToMessages) return;
     if (!messageSupportsReply(msg, conversation.channel)) {
       onReplyError?.(
-        "На это сообщение нельзя ответить — нет ID в MAX. Запустите синхронизацию истории.",
+        "На это сообщение нельзя ответить цитатой — нет ID в MAX. Отправьте обычное сообщение или синхронизируйте историю.",
       );
       return;
     }

@@ -409,12 +409,19 @@ export async function sendWazzupMaxMessage(
   const text = payload.content.trim();
   const attachmentUrl = payload.attachmentUrls?.[0];
 
+  function withReply(body: Record<string, string>): Record<string, string> {
+    if (!payload.replyToChannelMessageId) return body;
+    return { ...body, refMessageId: payload.replyToChannelMessageId };
+  }
+
   // Wazzup allows only text OR contentUri per request — send both when needed.
   if (attachmentUrl && text) {
-    const textResult = await postWazzupMaxRequest({
-      ...baseBody,
-      text,
-    });
+    const textResult = await postWazzupMaxRequest(
+      withReply({
+        ...baseBody,
+        text,
+      }),
+    );
     if (!textResult.ok) return textResult;
 
     const fileResult = await postWazzupMaxRequest({
@@ -437,10 +444,12 @@ export async function sendWazzupMaxMessage(
   }
 
   if (text) {
-    return postWazzupMaxRequest({
-      ...baseBody,
-      text,
-    });
+    return postWazzupMaxRequest(
+      withReply({
+        ...baseBody,
+        text,
+      }),
+    );
   }
 
   return { ok: false, error: "Пустое сообщение" };

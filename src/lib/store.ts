@@ -438,6 +438,15 @@ function resolveReplyToChannelMessageId(
   if (externalId.startsWith("mid.")) return externalId;
   const maxMatch = externalId.match(/^max-(mid\.[a-zA-Z0-9._-]+)$/);
   if (maxMatch) return maxMatch[1];
+  const wazzupMatch = externalId.match(/^wazzup-max-(.+)$/i);
+  if (wazzupMatch) return wazzupMatch[1];
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      externalId,
+    )
+  ) {
+    return externalId;
+  }
   return externalId;
 }
 
@@ -1592,7 +1601,7 @@ export async function sendMessage(
     return {
       message: null,
       error:
-        "Не удалось ответить: у сообщения нет ID MAX. Запустите синхронизацию истории в настройках интеграций.",
+        "Не удалось ответить: у сообщения нет ID в MAX. Отправьте обычное сообщение без цитаты или синхронизируйте историю в настройках.",
     };
   }
 
