@@ -177,7 +177,7 @@ async function handleWhatsAppMessage(
 
 export function attachWhatsAppMessageHandler(sock: WASocket): void {
   sock.ev.on("messages.upsert", ({ messages, type }) => {
-    if (type !== "notify") return;
+    if (type !== "notify" && type !== "append") return;
     for (const message of messages) {
       handleWhatsAppMessage(sock, message).catch((error) => {
         console.error("[whatsapp] message handler failed:", error);

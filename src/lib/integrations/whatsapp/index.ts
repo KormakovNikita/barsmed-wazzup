@@ -2,6 +2,7 @@ export {
   getWhatsAppSocket,
   getWhatsAppStatus,
   resetWhatsAppClient,
+  restartWhatsAppListener,
   startWhatsAppListener,
 } from "./client";
 export { isWhatsAppConfigured, getWhatsAppConnectionHint } from "./config";

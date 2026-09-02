@@ -18,8 +18,6 @@ export function WhatsAppConnectForm() {
   const [connected, setConnected] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [proxyConfigured, setProxyConfigured] = useState(false);
-  const [usesTelegramProxy, setUsesTelegramProxy] = useState(false);
-  const [telegramIsMtProxy, setTelegramIsMtProxy] = useState(false);
   const [proxyHint, setProxyHint] = useState<string | null>(null);
   const [proxy, setProxy] = useState("");
   const [proxySaved, setProxySaved] = useState(false);
@@ -54,9 +52,7 @@ export function WhatsAppConnectForm() {
       .then((res) => res.json())
       .then((data) => {
         if (data.proxyPreview) setProxy(data.proxyPreview);
-        setProxySaved(Boolean(data.configured && !data.usesTelegramProxy));
-        setUsesTelegramProxy(Boolean(data.usesTelegramProxy));
-        setTelegramIsMtProxy(Boolean(data.telegramIsMtProxy));
+        setProxySaved(Boolean(data.configured));
         setProxyConfigured(Boolean(data.configured));
       })
       .catch(() => {})
@@ -178,19 +174,12 @@ export function WhatsAppConnectForm() {
         <p className="font-medium">WhatsApp в России — только через VPN/прокси</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>
-            Если для Telegram уже задан <strong>SOCKS5</strong> — WhatsApp
-            использует его автоматически, отдельный прокси не нужен
+            WhatsApp использует только <strong>WHATSAPP_PROXY</strong> (SOCKS5)
           </li>
           <li>
-            <strong>MTProxy</strong> (ссылка t.me/proxy) для Telegram не
-            подходит — WhatsApp понимает только SOCKS5 или HTTP
+            Telegram остаётся на MTProxy — это разные настройки
           </li>
-          <li>
-            Подключение напрямую через WhatsApp Web, без Wazzup
-          </li>
-          <li>
-            Используйте отдельный номер WhatsApp Business — не личный основной
-          </li>
+          <li>Подключение напрямую через WhatsApp Web, без Wazzup</li>
         </ul>
       </div>
 
@@ -204,8 +193,8 @@ export function WhatsAppConnectForm() {
           disabled={loadingCredentials}
         />
         <p className="text-xs text-muted-foreground">
-          Оставьте пустым, если SOCKS5 уже задан в блоке Telegram выше. Отдельный
-          прокси нужен только если для WhatsApp другой VPN.
+          Telegram MTProxy (t.me/proxy) сюда не подставляется — только SOCKS5 для
+          WhatsApp.
         </p>
         <Button
           variant="outline"
@@ -218,17 +207,7 @@ export function WhatsAppConnectForm() {
         </Button>
         {proxySaved && (
           <p className="text-xs text-emerald-600 dark:text-emerald-400">
-            Отдельный прокси WhatsApp сохранён
-          </p>
-        )}
-        {usesTelegramProxy && (
-          <p className="text-xs text-emerald-600 dark:text-emerald-400">
-            Используется SOCKS-прокси из настроек Telegram
-          </p>
-        )}
-        {telegramIsMtProxy && (
-          <p className="text-xs text-destructive">
-            У Telegram MTProxy (t.me/proxy) — для WhatsApp нужен SOCKS5 или HTTP
+            Прокси WhatsApp сохранён
           </p>
         )}
       </div>
@@ -263,9 +242,7 @@ export function WhatsAppConnectForm() {
           <p className="text-sm text-muted-foreground">
             {proxyConfigured
               ? "Отсканируйте QR-код в WhatsApp Business: Настройки → Связанные устройства → Привязка устройства."
-              : telegramIsMtProxy
-                ? "Задайте SOCKS5-прокси (в Telegram или здесь) — MTProxy не подходит для WhatsApp."
-                : "Задайте SOCKS5-прокси в Telegram или здесь, затем подключите аккаунт по QR."}
+              : "Задайте WHATSAPP_PROXY (SOCKS5) в .env.local или в поле выше."}
           </p>
           {proxyHint && !connected && (
             <p className="text-xs text-muted-foreground">{proxyHint}</p>

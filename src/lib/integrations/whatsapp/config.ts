@@ -10,7 +10,7 @@ export function getWhatsAppConnectionHint(): string | null {
     return "WhatsApp отключён на сервере (WHATSAPP_ENABLED=false).";
   }
   if (!isWhatsAppProxyConfigured()) {
-    return "Для работы в РФ задайте SOCKS5/HTTP прокси (VPN) в настройках WhatsApp.";
+    return "Задайте WHATSAPP_PROXY (SOCKS5) — отдельно от MTProxy Telegram.";
   }
   if (!hasWhatsAppSession()) {
     return "Подключите WhatsApp Business по QR-коду в настройках.";

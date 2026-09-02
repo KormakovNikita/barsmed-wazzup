@@ -10,16 +10,12 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  const proxyRaw =
-    getSetting("whatsapp_proxy") ?? process.env.WHATSAPP_PROXY ?? "";
   const info = getWhatsAppProxyInfo();
 
   return NextResponse.json({
     configured: Boolean(getWhatsAppProxyUrl()),
     proxyPreview: info.url ? maskProxyUrl(info.url) : null,
     proxySource: info.source,
-    usesTelegramProxy: info.source === "telegram",
-    telegramIsMtProxy: info.telegramIsMtProxy,
   });
 }
 

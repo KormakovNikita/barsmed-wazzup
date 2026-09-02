@@ -26,16 +26,39 @@ let listenerStarted = false;
 let connecting: Promise<WASocket | null> | null = null;
 let lastBootError: string | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const handlerAttached = new WeakSet<object>();
 
 const silentLogger = pino({ level: "silent" });
 
-function getSocketOptions(authFolder: string) {
-  const agent = createWhatsAppProxyAgent();
-  return {
-    authFolder,
-    agent,
-    fetchAgent: agent,
-  };
+function ensureHandler(sock: WASocket): void {
+  if (handlerAttached.has(sock as object)) return;
+  attachWhatsAppMessageHandler(sock);
+  handlerAttached.add(sock as object);
+}
+
+function waitForConnectionOpen(sock: WASocket, timeoutMs = 45000): Promise<void> {
+  if (sock.user) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Таймаут подключения WhatsApp через прокси"));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      sock.ev.off("connection.update", onUpdate);
+    };
+
+    const onUpdate = (update: { connection?: string; qr?: string }) => {
+      if (update.connection === "open") {
+        cleanup();
+        resolve();
+      }
+    };
+
+    sock.ev.on("connection.update", onUpdate);
+  });
 }
 
 async function createSocket(
@@ -70,6 +93,8 @@ async function createSocket(
 
     if (connection === "open") {
       lastBootError = null;
+      ensureHandler(sock);
+      console.info("[whatsapp] connection open");
       hooks?.onConnectionOpen?.();
     }
 
@@ -86,11 +111,12 @@ async function createSocket(
         lastBootError = "Сессия WhatsApp завершена. Войдите по QR снова.";
       } else if (!getWhatsAppProxyUrl()) {
         lastBootError =
-          "WhatsApp недоступен без прокси. Задайте WHATSAPP_PROXY (VPN).";
+          "WhatsApp недоступен без WHATSAPP_PROXY (SOCKS5).";
       } else {
         lastBootError = message;
       }
 
+      console.warn("[whatsapp] connection closed:", lastBootError ?? message);
       hooks?.onConnectionClose?.(lastBootError ?? message);
 
       if (!hooks && !loggedOut && isWhatsAppEnabled()) {
@@ -100,7 +126,7 @@ async function createSocket(
   });
 
   if (!hooks) {
-    attachWhatsAppMessageHandler(sock);
+    ensureHandler(sock);
   }
 
   return sock;
@@ -110,13 +136,20 @@ function scheduleReconnect(): void {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
+    listenerStarted = false;
+    socket = null;
     void startWhatsAppListener();
   }, 5000);
 }
 
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
   if (!isWhatsAppEnabled()) return null;
-  if (socket && socket.user) return socket;
+
+  if (socket?.user) {
+    ensureHandler(socket);
+    return socket;
+  }
+
   if (connecting) return connecting;
 
   connecting = (async () => {
@@ -127,7 +160,8 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
 
     if (!getWhatsAppProxyUrl()) {
       lastBootError =
-        "Для WhatsApp в РФ нужен прокси (VPN). Задайте WHATSAPP_PROXY в настройках.";
+        getWhatsAppProxyHint() ??
+        "Задайте WHATSAPP_PROXY (SOCKS5) в .env.local или настройках.";
       return null;
     }
 
@@ -142,12 +176,17 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
       }
 
       const instance = await createSocket(getWhatsAppSessionDir());
+      if (!instance.user) {
+        await waitForConnectionOpen(instance);
+      }
+      ensureHandler(instance);
       socket = instance;
       return instance;
     } catch (error) {
       lastBootError =
         error instanceof Error ? error.message : "Ошибка подключения WhatsApp";
       console.error("[whatsapp] connect failed:", error);
+      socket = null;
       return null;
     }
   })();
@@ -160,8 +199,8 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
 }
 
 export async function startWhatsAppListener(): Promise<void> {
-  if (listenerStarted || !isWhatsAppEnabled()) return;
-  listenerStarted = true;
+  if (!isWhatsAppEnabled()) return;
+  if (listenerStarted && socket?.user) return;
 
   try {
     const active = await getWhatsAppSocket();
@@ -170,11 +209,17 @@ export async function startWhatsAppListener(): Promise<void> {
       console.warn("[whatsapp] listener not started:", lastBootError);
       return;
     }
+    listenerStarted = true;
     console.info("[whatsapp] listener started");
   } catch (error) {
     listenerStarted = false;
     console.error("[whatsapp] failed to start listener:", error);
   }
+}
+
+export async function restartWhatsAppListener(): Promise<void> {
+  await resetWhatsAppClient();
+  await startWhatsAppListener();
 }
 
 export async function resetWhatsAppClient(): Promise<void> {
@@ -201,10 +246,9 @@ export async function createWhatsAppQrSocket(hooks: {
 }): Promise<WASocket> {
   await resetWhatsAppClient();
   if (!getWhatsAppProxyUrl()) {
-    const hint = getWhatsAppProxyHint();
     throw new Error(
-      hint ??
-        "Сначала задайте SOCKS5/HTTP прокси (VPN). WhatsApp в РФ без VPN не работает.",
+      getWhatsAppProxyHint() ??
+        "Задайте WHATSAPP_PROXY (SOCKS5). Telegram MTProxy для WhatsApp не используется.",
     );
   }
   return createSocket(getWhatsAppSessionDir(), hooks);
@@ -215,7 +259,7 @@ export async function getWhatsAppStatus(): Promise<{
   configured: boolean;
   connected: boolean;
   proxyConfigured: boolean;
-  proxySource: "whatsapp" | "telegram" | null;
+  proxySource: "whatsapp" | null;
   proxyHint: string | null;
   profile: { id?: string; name?: string; phone?: string } | null;
   error?: string | null;
@@ -244,12 +288,12 @@ export async function getWhatsAppStatus(): Promise<{
       configured,
       connected: false,
       proxyConfigured: false,
-      proxySource: proxyInfo.source,
+      proxySource: null,
       proxyHint,
       profile: null,
       error:
         proxyHint ??
-        "Задайте прокси (VPN): SOCKS5 или HTTP. Без него WhatsApp в России недоступен.",
+        "Задайте WHATSAPP_PROXY (SOCKS5). Telegram MTProxy не подходит для WhatsApp.",
     };
   }
 
@@ -267,7 +311,7 @@ export async function getWhatsAppStatus(): Promise<{
         error:
           lastBootError ??
           (configured
-            ? "Сессия есть, но подключение не удалось. Попробуйте QR снова."
+            ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."
             : "Подключите WhatsApp по QR-коду."),
       };
     }
@@ -300,5 +344,3 @@ export async function getWhatsAppStatus(): Promise<{
     };
   }
 }
-
-export { getSocketOptions };

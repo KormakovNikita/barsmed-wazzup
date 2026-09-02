@@ -61,7 +61,10 @@ export async function startWhatsAppQrAuth(): Promise<{ authId: string }> {
     },
     onConnectionOpen: () => {
       entry.status = "done";
-      void resetWhatsAppClient().then(() => startWhatsAppListener());
+      void (async () => {
+        await resetWhatsAppClient();
+        await startWhatsAppListener();
+      })();
       setTimeout(() => {
         pending.delete(authId);
         try {
