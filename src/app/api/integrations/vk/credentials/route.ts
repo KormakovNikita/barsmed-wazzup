@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveVkGroupId } from "@/lib/integrations/vk/api";
 import { deleteSetting, getSetting, setSetting } from "@/lib/settings-store";
 
 function maskToken(token: string): string {
@@ -63,14 +64,13 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!/^\d+$/.test(groupId)) {
-    return NextResponse.json(
-      { error: "ID сообщества должен быть числом (без минуса)" },
-      { status: 400 },
-    );
+  const token = accessToken || existingToken;
+  const resolved = await resolveVkGroupId(groupId, token);
+  if (!resolved.ok) {
+    return NextResponse.json({ error: resolved.error }, { status: 400 });
   }
 
-  setSetting("vk_group_id", groupId);
+  setSetting("vk_group_id", resolved.groupId);
   if (accessToken) {
     setSetting("vk_access_token", accessToken);
   }
@@ -82,7 +82,12 @@ export async function POST(request: Request) {
     setSetting("vk_callback_secret", callbackSecret);
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    groupId: resolved.groupId,
+    screenName: resolved.screenName ?? null,
+    name: resolved.name ?? null,
+  });
 }
 
 export async function DELETE() {

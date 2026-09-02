@@ -50,6 +50,38 @@ export interface VkLongPollServer {
   ts: string;
 }
 
+export async function resolveVkGroupId(
+  groupIdOrScreenName: string,
+  accessToken: string,
+): Promise<
+  | { ok: true; groupId: string; screenName?: string; name?: string }
+  | { ok: false; error: string }
+> {
+  const trimmed = groupIdOrScreenName.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return { ok: true, groupId: trimmed };
+  }
+
+  const result = await vkMethod<VkGroupInfo[]>(
+    "groups.getById",
+    { group_id: trimmed, fields: "screen_name" },
+    accessToken,
+  );
+  if (!result.ok) return result;
+
+  const group = result.data[0];
+  if (!group) {
+    return { ok: false, error: "Сообщество не найдено" };
+  }
+
+  return {
+    ok: true,
+    groupId: String(group.id),
+    screenName: group.screen_name,
+    name: group.name,
+  };
+}
+
 export async function getVkLongPollServer(
   groupId: string,
   accessToken: string,

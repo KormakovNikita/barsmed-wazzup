@@ -179,12 +179,12 @@ export function VkConnectPanel() {
             id="vk-group-id"
             value={groupId}
             onChange={(e) => setGroupId(e.target.value)}
-            placeholder="123456789"
+            placeholder="123456789 или mrtkt"
             inputMode="numeric"
           />
           <p className="text-xs text-muted-foreground">
-            Число из адреса vk.com/club<strong>123456789</strong> или
-            vk.com/public<strong>123456789</strong> (без минуса).
+            Число из адреса vk.com/club<strong>123456789</strong>, или короткий
+            адрес — например <strong>mrtkt</strong>.
           </p>
         </div>
 
