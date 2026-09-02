@@ -18,6 +18,7 @@ import {
   getWhatsAppSessionDir,
   hasWhatsAppSession,
   isWhatsAppEnabled,
+  clearWhatsAppSession,
 } from "@/lib/integrations/whatsapp/session-path";
 import { attachWhatsAppMessageHandler } from "@/lib/integrations/whatsapp/message-handler";
 
@@ -28,6 +29,7 @@ let lastBootError: string | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let socketConnected = false;
 let sessionLoggedOut = false;
+let qrAuthInProgress = false;
 const handlerAttached = new WeakSet<object>();
 
 const silentLogger = pino({ level: "silent" });
@@ -181,8 +183,8 @@ export function isWhatsAppSocketLive(): boolean {
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
   if (!isWhatsAppEnabled()) return null;
 
-  if (socket?.user && socketConnected) {
-    ensureHandler(socket);
+  if (isWhatsAppSocketLive()) {
+    ensureHandler(socket!);
     return socket;
   }
 
@@ -244,6 +246,7 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
 
 export async function startWhatsAppListener(): Promise<void> {
   if (!isWhatsAppEnabled()) return;
+  if (qrAuthInProgress) return;
   if (listenerStarted && socketConnected) return;
 
   try {
@@ -290,13 +293,29 @@ export async function createWhatsAppQrSocket(hooks: {
   onConnectionClose: (error?: string) => void;
 }): Promise<WASocket> {
   await resetWhatsAppClient();
+  clearWhatsAppSession();
+  sessionLoggedOut = false;
+  lastBootError = null;
+  qrAuthInProgress = true;
+
   if (!getWhatsAppProxyUrl()) {
+    qrAuthInProgress = false;
     throw new Error(
       getWhatsAppProxyHint() ??
         "Задайте WHATSAPP_PROXY (SOCKS5). Telegram MTProxy для WhatsApp не используется.",
     );
   }
-  return createSocket(getWhatsAppSessionDir(), hooks);
+
+  try {
+    return await createSocket(getWhatsAppSessionDir(), hooks);
+  } catch (error) {
+    qrAuthInProgress = false;
+    throw error;
+  }
+}
+
+export function finishWhatsAppQrAuth(): void {
+  qrAuthInProgress = false;
 }
 
 export async function getWhatsAppStatus(): Promise<{
@@ -374,7 +393,7 @@ export async function getWhatsAppStatus(): Promise<{
     };
   }
 
-  if (configured && !listenerStarted && !connecting) {
+  if (configured && !listenerStarted && !connecting && !qrAuthInProgress) {
     void startWhatsAppListener();
   }
 

@@ -124,8 +124,10 @@ export function WhatsAppConnectForm() {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(() => {
         void pollQrStatus(data.authId);
-      }, 2000);
+      }, 1500);
       await pollQrStatus(data.authId);
+      setTimeout(() => void pollQrStatus(data.authId), 500);
+      setTimeout(() => void pollQrStatus(data.authId), 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -262,6 +264,13 @@ export function WhatsAppConnectForm() {
                 {qrStatus === "scanned"
                   ? "Подтвердите вход на телефоне…"
                   : "WhatsApp → Связанные устройства → Привязка устройства"}
+              </p>
+            </div>
+          ) : qrAuthId ? (
+            <div className="flex flex-col items-center gap-3 py-6">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Генерация QR-кода через прокси…
               </p>
             </div>
           ) : (

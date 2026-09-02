@@ -1,5 +1,6 @@
 import {
   createWhatsAppQrSocket,
+  finishWhatsAppQrAuth,
   resetWhatsAppClient,
   startWhatsAppListener,
 } from "@/lib/integrations/whatsapp/client";
@@ -23,6 +24,7 @@ function cleanupExpired(): void {
   for (const [id, entry] of pending) {
     if (now - entry.createdAt > QR_TTL_MS && entry.status !== "done") {
       pending.delete(id);
+      finishWhatsAppQrAuth();
       try {
         entry.client.end(undefined);
       } catch {
@@ -65,6 +67,7 @@ export async function startWhatsAppQrAuth(): Promise<{ authId: string }> {
       entry.status = "done";
       void (async () => {
         pending.delete(authId);
+        finishWhatsAppQrAuth();
         try {
           await entry.client.end(undefined);
         } catch {
@@ -79,6 +82,7 @@ export async function startWhatsAppQrAuth(): Promise<{ authId: string }> {
       if (entry.status === "done") return;
       entry.status = "error";
       entry.error = error ?? "Соединение закрыто";
+      finishWhatsAppQrAuth();
     },
   });
 
