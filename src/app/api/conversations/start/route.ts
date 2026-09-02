@@ -106,6 +106,7 @@ export async function POST(request: Request) {
       contactName: peer.name,
       content: content.trim(),
       operatorId,
+      channelUserId: peer.userId,
     });
 
     if (!result) {

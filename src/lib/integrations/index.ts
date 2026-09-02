@@ -26,7 +26,7 @@ import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzup
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
-): Promise<{ ok: boolean; externalId?: string; error?: string }> {
+): Promise<{ ok: boolean; externalId?: string; error?: string; chatId?: string }> {
   switch (payload.channel) {
     case "telegram":
       return sendTelegramMessage(payload);

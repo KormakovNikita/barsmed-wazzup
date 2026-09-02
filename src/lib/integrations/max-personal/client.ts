@@ -29,7 +29,22 @@ export function hasMaxPersonalSession(): boolean {
 
 export async function getMaxPersonalClient(): Promise<WebMaxClient | null> {
   if (!isMaxPersonalEnabled()) return null;
-  if (client?.isAuthorized) return client;
+  if (client?.isAuthorized) {
+    if (!client.isConnected) {
+      try {
+        await client.connect();
+        if (!client.isConnected) {
+          await resetMaxPersonalClient();
+        } else {
+          return client;
+        }
+      } catch {
+        await resetMaxPersonalClient();
+      }
+    } else {
+      return client;
+    }
+  }
   if (connecting) return connecting;
 
   connecting = (async () => {

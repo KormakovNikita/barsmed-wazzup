@@ -10,6 +10,10 @@ export {
   getPendingMaxPersonalQr,
   startMaxPersonalQrAuth,
 } from "./qr-auth";
+export {
+  ensureMaxPersonalDialogChatId,
+  findMaxPersonalDialogChatId,
+} from "./dialog";
 export { resolveMaxPersonalPeer } from "./peer";
 export { sendMaxPersonalMessage } from "./send";
 export {

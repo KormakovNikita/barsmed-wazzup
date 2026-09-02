@@ -1633,10 +1633,16 @@ export async function sendMessage(
               conversation.contactId,
             )
         : conversation.channel === "max_personal"
-          ? {
-              chatId: conversation.externalThreadId,
-              userId: conversation.externalThreadId,
-            }
+          ? (() => {
+              const contact = getContactForConversation(conversation.contactId);
+              const userId =
+                contact?.channelUserIds?.max_personal ??
+                conversation.externalThreadId;
+              return {
+                chatId: conversation.externalThreadId,
+                userId,
+              };
+            })()
           : {};
 
     const publicBase = getPublicAppBaseUrl();
@@ -1680,6 +1686,21 @@ export async function sendMessage(
               : result.externalId,
         );
     }
+
+    if (
+      conversation.channel === "max_personal" &&
+      result.ok &&
+      "chatId" in result &&
+      result.chatId &&
+      result.chatId !== conversation.externalThreadId
+    ) {
+      getDb()
+        .prepare(
+          "UPDATE conversations SET external_thread_id = ? WHERE id = ?",
+        )
+        .run(result.chatId, conversationId);
+    }
+
     updateMessage(message);
 
     if (!result.ok) {
@@ -1799,6 +1820,7 @@ export async function startOutboundConversation(params: {
   content: string;
   operatorId?: string;
   username?: string;
+  channelUserId?: string;
 }): Promise<{ conversation: Conversation; message: Message; error?: string } | null> {
   const trimmed = params.content.trim();
   if (!trimmed) return null;
@@ -1819,7 +1841,7 @@ export async function startOutboundConversation(params: {
   if (!conversation) {
     let contact = findContactByChannelUser(
       params.channel,
-      params.externalThreadId,
+      params.channelUserId ?? params.externalThreadId,
     );
 
     if (!contact) {
@@ -1828,8 +1850,19 @@ export async function startOutboundConversation(params: {
         name: params.contactName,
         tags: ["Исходящий"],
         dealStage: "new",
-        channelUserIds: { [params.channel]: params.externalThreadId },
+        channelUserIds: {
+          [params.channel]: params.channelUserId ?? params.externalThreadId,
+        },
         notes: params.username ? `@${params.username}` : undefined,
+      };
+      upsertContact(contact);
+    } else if (
+      params.channelUserId &&
+      contact.channelUserIds?.[params.channel] !== params.channelUserId
+    ) {
+      contact.channelUserIds = {
+        ...contact.channelUserIds,
+        [params.channel]: params.channelUserId,
       };
       upsertContact(contact);
     }

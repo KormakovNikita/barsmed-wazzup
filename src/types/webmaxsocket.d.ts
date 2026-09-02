@@ -1,9 +1,15 @@
 declare module "webmaxsocket" {
+  export const Opcode: {
+    MSG_SEND: number;
+    [key: string]: number;
+  };
+
   export class WebMaxClient {
     constructor(options?: Record<string, unknown>);
     me: { id?: number; firstname?: string; lastname?: string } | null;
     isConnected: boolean;
     isAuthorized: boolean;
+    lastSyncPayload?: { chats?: Array<Record<string, unknown>> };
     start(): Promise<void>;
     stop(): Promise<void>;
     connect(): Promise<void>;
@@ -18,6 +24,12 @@ declare module "webmaxsocket" {
     loginByQR(trackId: string): Promise<unknown>;
     onMessage(handler: (message: MaxProxyMessage) => void | Promise<void>): void;
     onStart(handler: () => void): void;
+    getChats(marker?: number): Promise<Array<Record<string, unknown>>>;
+    getUser(userId: number): Promise<{
+      id?: number;
+      firstname?: string;
+      lastname?: string;
+    }>;
     getHistory(
       chatId: string | number | bigint,
       from?: unknown,
@@ -27,7 +39,7 @@ declare module "webmaxsocket" {
     sendMessage(params: {
       chatId: string | number;
       text: string;
-    }): Promise<{ id?: string | number } | unknown>;
+    }): Promise<{ id?: string | number; error?: string; localizedMessage?: string; message?: string } | unknown>;
     getUserByPhone(phone: string): Promise<{
       id?: number;
       firstname?: string;
