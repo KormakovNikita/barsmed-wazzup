@@ -50,6 +50,45 @@ export interface VkLongPollServer {
   ts: string;
 }
 
+export interface VkGroupInfo {
+  id: number;
+  name: string;
+  screen_name?: string;
+}
+
+type GroupsGetByIdResponse =
+  | VkGroupInfo[]
+  | { groups?: VkGroupInfo[]; profiles?: unknown[] };
+
+function parseGroupsGetByIdResponse(
+  data: GroupsGetByIdResponse,
+): VkGroupInfo | null {
+  if (Array.isArray(data)) {
+    return data[0] ?? null;
+  }
+  return data.groups?.[0] ?? null;
+}
+
+async function fetchVkGroup(
+  groupId: string,
+  accessToken: string,
+): Promise<
+  { ok: true; group: VkGroupInfo } | { ok: false; error: string }
+> {
+  const result = await vkMethod<GroupsGetByIdResponse>(
+    "groups.getById",
+    { group_id: groupId, fields: "screen_name" },
+    accessToken,
+  );
+  if (!result.ok) return result;
+
+  const group = parseGroupsGetByIdResponse(result.data);
+  if (!group) {
+    return { ok: false, error: "Сообщество не найдено" };
+  }
+  return { ok: true, group };
+}
+
 export async function resolveVkGroupId(
   groupIdOrScreenName: string,
   accessToken: string,
@@ -59,26 +98,24 @@ export async function resolveVkGroupId(
 > {
   const trimmed = groupIdOrScreenName.trim();
   if (/^\d+$/.test(trimmed)) {
-    return { ok: true, groupId: trimmed };
+    const verified = await fetchVkGroup(trimmed, accessToken);
+    if (!verified.ok) return verified;
+    return {
+      ok: true,
+      groupId: String(verified.group.id),
+      screenName: verified.group.screen_name,
+      name: verified.group.name,
+    };
   }
 
-  const result = await vkMethod<VkGroupInfo[]>(
-    "groups.getById",
-    { group_id: trimmed, fields: "screen_name" },
-    accessToken,
-  );
+  const result = await fetchVkGroup(trimmed, accessToken);
   if (!result.ok) return result;
-
-  const group = result.data[0];
-  if (!group) {
-    return { ok: false, error: "Сообщество не найдено" };
-  }
 
   return {
     ok: true,
-    groupId: String(group.id),
-    screenName: group.screen_name,
-    name: group.name,
+    groupId: String(result.group.id),
+    screenName: result.group.screen_name,
+    name: result.group.name,
   };
 }
 
@@ -97,29 +134,13 @@ export async function getVkLongPollServer(
   return { ok: true, server: result.data };
 }
 
-export interface VkGroupInfo {
-  id: number;
-  name: string;
-  screen_name?: string;
-}
-
 export async function getVkGroupInfo(
   groupId: string,
   accessToken: string,
 ): Promise<
   { ok: true; group: VkGroupInfo } | { ok: false; error: string }
 > {
-  const result = await vkMethod<VkGroupInfo[]>(
-    "groups.getById",
-    { group_id: groupId, fields: "screen_name" },
-    accessToken,
-  );
-  if (!result.ok) return result;
-  const group = result.data[0];
-  if (!group) {
-    return { ok: false, error: "Сообщество не найдено" };
-  }
-  return { ok: true, group };
+  return fetchVkGroup(groupId, accessToken);
 }
 
 export interface VkUserInfo {
