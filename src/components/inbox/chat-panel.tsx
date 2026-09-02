@@ -6,9 +6,11 @@ import { ru } from "date-fns/locale";
 import {
   Check,
   CheckCheck,
+  Copy,
   CornerUpLeft,
   MoreVertical,
   Paperclip,
+  Pencil,
   Send,
   Trash2,
   X,
@@ -44,6 +46,7 @@ interface ChatPanelProps {
     replyToMessageId?: string,
   ) => Promise<void>;
   onDeleteMessage: (messageId: string, revoke: boolean) => Promise<void>;
+  onEditMessage?: (messageId: string, content: string) => Promise<void>;
   onSimulateIncoming: () => Promise<void>;
   onDismissReply?: () => Promise<void>;
   sendError?: string | null;
@@ -53,15 +56,23 @@ interface ChatPanelProps {
 function ReplyQuote({
   replyTo,
   isOut,
+  onJump,
 }: {
   replyTo: NonNullable<Message["replyTo"]>;
   isOut: boolean;
+  onJump?: (messageId: string) => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onJump?.(replyTo.messageId);
+      }}
       className={cn(
-        "mb-2 border-l-2 pl-2 text-xs opacity-90",
+        "mb-2 w-full border-l-2 pl-2 text-left text-xs opacity-90 transition-opacity hover:opacity-100",
         isOut ? "border-white/40" : "border-primary/40",
+        onJump && "cursor-pointer",
       )}
     >
       <p className="font-medium">
@@ -70,7 +81,7 @@ function ReplyQuote({
       <p className="line-clamp-2 whitespace-pre-wrap break-words">
         {replyTo.content}
       </p>
-    </div>
+    </button>
   );
 }
 
@@ -97,6 +108,21 @@ function messageSupportsReply(
     return Boolean(msg.externalId?.startsWith("vk-"));
   }
   return false;
+}
+
+function canEditOutboundMessage(
+  msg: Message,
+  channel: ConversationDetail["channel"],
+): boolean {
+  if (msg.direction !== "out") return false;
+  if (msg.attachments?.length) return false;
+  if (!msg.content.trim()) return false;
+  if (!msg.externalId) return false;
+  return channel === "telegram" || channel === "vk";
+}
+
+function channelSupportsRemoteDelete(channel: ConversationDetail["channel"]): boolean {
+  return channel === "telegram" || channel === "vk";
 }
 
 function normalizeClipboardFile(file: File): File {
@@ -231,6 +257,7 @@ export function ChatPanel({
   syncing = false,
   onSendMessage,
   onDeleteMessage,
+  onEditMessage,
   onSimulateIncoming,
   onDismissReply,
   sendError,
@@ -241,12 +268,19 @@ export function ChatPanel({
   const [dismissing, setDismissing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(
+    null,
+  );
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageCountRef = useRef(0);
   const conversationIdRef = useRef<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const viewport = scrollAreaRef.current?.querySelector(
@@ -267,6 +301,41 @@ export function ChatPanel({
     }
   }, []);
 
+  const scrollToMessage = useCallback((messageId: string) => {
+    const viewport = scrollAreaRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLElement | null;
+    const element = document.getElementById(`message-${messageId}`);
+    if (!viewport || !element) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const offset =
+      elementRect.top -
+      viewportRect.top +
+      viewport.scrollTop -
+      viewport.clientHeight / 2 +
+      elementRect.height / 2;
+
+    viewport.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+
+    setHighlightedMessageId(messageId);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!selectedFile?.type.startsWith("image/")) {
       setFilePreviewUrl(null);
@@ -283,6 +352,8 @@ export function ChatPanel({
       messageCountRef.current = conversation?.messages.length ?? 0;
       setSelectedFile(null);
       setReplyToMessage(null);
+      setEditingMessageId(null);
+      setEditDraft("");
       requestAnimationFrame(() => scrollMessagesToBottom("auto"));
       return;
     }
@@ -418,8 +489,10 @@ export function ChatPanel({
   }
 
   const canReplyToMessages =
-    conversation.channel === "telegram" || conversation.channel === "max";
-  const canDeleteMessages = conversation.channel === "telegram";
+    conversation.channel === "telegram" ||
+    conversation.channel === "max" ||
+    conversation.channel === "vk";
+  const canRemoteDelete = channelSupportsRemoteDelete(conversation.channel);
 
   function selectMessageForReply(msg: Message) {
     if (!conversation || !canReplyToMessages) return;
@@ -431,6 +504,39 @@ export function ChatPanel({
     }
     onReplyError?.(null);
     setReplyToMessage(msg);
+  }
+
+  function startEditing(msg: Message) {
+    setEditingMessageId(msg.id);
+    setEditDraft(msg.content);
+    setReplyToMessage(null);
+  }
+
+  function cancelEditing() {
+    setEditingMessageId(null);
+    setEditDraft("");
+  }
+
+  async function saveEditing() {
+    if (!editingMessageId || !onEditMessage || editSaving) return;
+    setEditSaving(true);
+    try {
+      await onEditMessage(editingMessageId, editDraft);
+      setEditingMessageId(null);
+      setEditDraft("");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function copyMessageText(msg: Message) {
+    const text = messagePreview(msg);
+    try {
+      await navigator.clipboard.writeText(text);
+      onReplyError?.(null);
+    } catch {
+      onReplyError?.("Не удалось скопировать текст");
+    }
   }
 
   async function handleDismissReply() {
@@ -515,9 +621,11 @@ export function ChatPanel({
                     </div>
                   )}
                 <div
+                  id={`message-${msg.id}`}
                   className={cn(
                     "group flex items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200",
                     isOut ? "justify-end" : "justify-start",
+                    highlightedMessageId === msg.id && "message-highlight",
                   )}
                 >
                   {canReplyToMessages && (
@@ -541,86 +649,146 @@ export function ChatPanel({
                       isOut
                         ? "bubble-out rounded-br-sm"
                         : "bubble-in rounded-bl-sm text-foreground",
-                      canReplyToMessages && "cursor-pointer hover:shadow-md",
+                      highlightedMessageId === msg.id &&
+                        "ring-2 ring-amber-400/80 shadow-md",
                     )}
-                    onDoubleClick={() => {
-                      if (canReplyToMessages) selectMessageForReply(msg);
-                    }}
-                    onContextMenu={(event) => {
-                      if (!canReplyToMessages) return;
-                      event.preventDefault();
-                      selectMessageForReply(msg);
-                    }}
                   >
                     {msg.replyTo && (
-                      <ReplyQuote replyTo={msg.replyTo} isOut={isOut} />
+                      <ReplyQuote
+                        replyTo={msg.replyTo}
+                        isOut={isOut}
+                        onJump={scrollToMessage}
+                      />
                     )}
-                    {msg.attachments?.map((attachment) => (
-                      <div key={attachment.id} className="mb-2 last:mb-0">
-                        <AttachmentView attachment={attachment} isOut={isOut} />
+                    {editingMessageId === msg.id ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={editDraft}
+                          onChange={(event) => setEditDraft(event.target.value)}
+                          rows={3}
+                          className="min-h-[72px] resize-none border-white/20 bg-black/10 text-sm text-inherit"
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={cancelEditing}
+                            disabled={editSaving}
+                          >
+                            Отмена
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => void saveEditing()}
+                            disabled={editSaving || !editDraft.trim()}
+                          >
+                            {editSaving ? "…" : "Сохранить"}
+                          </Button>
+                        </div>
                       </div>
-                    ))}
-                    {msg.previousContent?.trim() && (
-                      <p
-                        className={cn(
-                          "mb-1 whitespace-pre-wrap break-words text-[13px] line-through opacity-60",
-                          isOut ? "text-white/70" : "text-muted-foreground",
+                    ) : (
+                      <>
+                        {msg.attachments?.map((attachment) => (
+                          <div key={attachment.id} className="mb-2 last:mb-0">
+                            <AttachmentView attachment={attachment} isOut={isOut} />
+                          </div>
+                        ))}
+                        {msg.previousContent?.trim() && (
+                          <p
+                            className={cn(
+                              "mb-1 whitespace-pre-wrap break-words text-[13px] line-through opacity-60",
+                              isOut ? "text-white/70" : "text-muted-foreground",
+                            )}
+                          >
+                            {msg.previousContent}
+                          </p>
                         )}
-                      >
-                        {msg.previousContent}
-                      </p>
+                        {msg.content.trim() && (
+                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                        )}
+                        <div
+                          className={cn(
+                            "mt-1 flex items-center justify-end gap-1 text-[10px]",
+                            isOut ? "text-white/75" : "text-muted-foreground",
+                          )}
+                        >
+                          <span>
+                            {format(new Date(msg.createdAt), "HH:mm", { locale: ru })}
+                          </span>
+                          {msg.editedAt && (
+                            <span className="italic opacity-80">изменено</span>
+                          )}
+                          {isOut && <MessageStatusIcon status={msg.status} />}
+                        </div>
+                      </>
                     )}
-                    {msg.content.trim() && (
-                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                    )}
-                    <div
-                      className={cn(
-                        "mt-1 flex items-center justify-end gap-1 text-[10px]",
-                        isOut ? "text-white/75" : "text-muted-foreground",
-                      )}
-                    >
-                      <span>
-                        {format(new Date(msg.createdAt), "HH:mm", { locale: ru })}
-                      </span>
-                      {msg.editedAt && (
-                        <span className="italic opacity-80">изменено</span>
-                      )}
-                      {isOut && <MessageStatusIcon status={msg.status} />}
-                    </div>
                   </div>
 
-                  {canReplyToMessages && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        className="h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 inline-flex items-center justify-center rounded-md hover:bg-accent"
-                        title="Действия"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align={isOut ? "end" : "start"}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      className="h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 inline-flex items-center justify-center rounded-md hover:bg-accent"
+                      title="Действия"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={isOut ? "end" : "start"}>
+                      {canReplyToMessages && messageSupportsReply(msg, conversation.channel) && (
                         <DropdownMenuItem onClick={() => selectMessageForReply(msg)}>
                           <CornerUpLeft className="mr-2 h-4 w-4" />
                           Ответить
                         </DropdownMenuItem>
-                        {canDeleteMessages && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => onDeleteMessage(msg.id, false)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Удалить у меня
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => onDeleteMessage(msg.id, true)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Удалить у всех
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                      )}
+                      {(msg.content.trim() || msg.attachments?.length) && (
+                        <DropdownMenuItem onClick={() => void copyMessageText(msg)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Копировать
+                        </DropdownMenuItem>
+                      )}
+                      {isOut && canEditOutboundMessage(msg, conversation.channel) && onEditMessage && (
+                        <DropdownMenuItem onClick={() => startEditing(msg)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Редактировать
+                        </DropdownMenuItem>
+                      )}
+                      {isOut && (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => onDeleteMessage(msg.id, false)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Удалить у меня
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => onDeleteMessage(msg.id, true)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Удалить у всех
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {!isOut && canRemoteDelete && (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => onDeleteMessage(msg.id, false)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Удалить у меня
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => onDeleteMessage(msg.id, true)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Удалить у всех
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 </Fragment>
               );

@@ -1,7 +1,7 @@
 import { getDb, isDatabaseEmpty } from "@/lib/db";
 import { ALL_CHANNELS } from "@/lib/channels";
 import { getAssignmentStrategy, pickOperatorForAssignment } from "@/lib/assignment";
-import { dispatchOutboundMessage, deleteChannelMessage } from "@/lib/integrations";
+import { dispatchOutboundMessage, deleteChannelMessage, editChannelMessage } from "@/lib/integrations";
 import { getMaxIncomingMode, getPublicAppBaseUrl } from "@/lib/integrations/wazzup-max";
 import {
   deleteMediaFile,
@@ -453,7 +453,10 @@ function resolveReplyToChannelMessageId(
     .prepare("SELECT external_id FROM messages WHERE id = ?")
     .get(replyToMessageId) as { external_id: string | null } | undefined;
   if (!row?.external_id) return undefined;
-  const externalId = row.external_id;
+  return extractChannelMessageId(row.external_id);
+}
+
+export function extractChannelMessageId(externalId: string): string | undefined {
   const tgMatch = externalId.match(/^tg-user-(\d+)-/);
   if (tgMatch) return tgMatch[1];
   if (externalId.startsWith("mid.")) return externalId;
@@ -1828,15 +1831,16 @@ export async function deleteMessage(
 
   if (message.externalId && message.externalThreadId) {
     const channelMessageId =
-      message.externalId.match(/^tg-user-(\d+)-/)?.[1] ?? message.externalId;
+      extractChannelMessageId(message.externalId) ?? message.externalId;
     const remote = await deleteChannelMessage({
       channel: message.channel,
       externalThreadId: message.externalThreadId,
       channelMessageId,
+      externalId: message.externalId,
       revoke: options?.revoke ?? false,
     });
     if (!remote.ok && options?.revoke) {
-      return { ok: false, error: remote.error ?? "Не удалось удалить в Telegram" };
+      return { ok: false, error: remote.error ?? "Не удалось удалить сообщение" };
     }
   }
 
@@ -1873,6 +1877,92 @@ export async function deleteMessage(
   }
 
   return { ok: true };
+}
+
+export async function editMessage(
+  messageId: string,
+  content: string,
+): Promise<{ ok: boolean; message?: Message; error?: string }> {
+  const existing = getMessageById(messageId);
+  if (!existing) {
+    return { ok: false, error: "Сообщение не найдено" };
+  }
+  if (existing.direction !== "out") {
+    return { ok: false, error: "Можно редактировать только исходящие сообщения" };
+  }
+
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Текст не может быть пустым" };
+  }
+  if (trimmed === existing.content.trim()) {
+    return { ok: true, message: existing };
+  }
+  if (existing.attachments?.length) {
+    return {
+      ok: false,
+      error: "Сообщения с вложениями пока нельзя редактировать",
+    };
+  }
+
+  if (existing.externalId && existing.externalThreadId) {
+    const channelMessageId =
+      extractChannelMessageId(existing.externalId) ?? existing.externalId;
+    const remote = await editChannelMessage({
+      channel: existing.channel,
+      externalThreadId: existing.externalThreadId,
+      channelMessageId,
+      externalId: existing.externalId,
+      content: trimmed,
+    });
+    if (!remote.ok) {
+      return { ok: false, error: remote.error ?? "Не удалось изменить сообщение" };
+    }
+  }
+
+  const editedAt = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE messages
+       SET content = ?, previous_content = ?, edited_at = ?
+       WHERE id = ?`,
+    )
+    .run(trimmed, existing.content, editedAt, existing.id);
+
+  const latest = getDb()
+    .prepare(
+      "SELECT id FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(existing.conversationId) as { id: string } | undefined;
+
+  if (latest?.id === existing.id) {
+    getDb()
+      .prepare(
+        "UPDATE conversations SET last_message_preview = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(trimmed, editedAt, existing.conversationId);
+  }
+
+  const attachments = loadAttachmentsForMessages([existing.id]).get(existing.id);
+  return {
+    ok: true,
+    message: rowToMessage(
+      {
+        id: existing.id,
+        conversation_id: existing.conversationId,
+        content: trimmed,
+        direction: existing.direction,
+        status: existing.status,
+        operator_id: existing.operatorId ?? null,
+        external_id: existing.externalId ?? null,
+        reply_to_message_id: existing.replyToMessageId ?? null,
+        created_at: existing.createdAt,
+        previous_content: existing.content,
+        edited_at: editedAt,
+      },
+      attachments,
+    ),
+  };
 }
 
 export async function startOutboundConversation(params: {

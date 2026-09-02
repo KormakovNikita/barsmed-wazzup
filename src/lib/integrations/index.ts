@@ -9,6 +9,7 @@ import {
 } from "./max";
 import {
   deleteTelegramMessage,
+  editTelegramMessage,
   getTelegramMode,
   getTelegramStatus,
   isTelegramConfigured,
@@ -24,6 +25,7 @@ import {
 } from "./max-personal";
 import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, isMaxIncomingConfigured, sendWazzupMaxMessage, shouldMaxUsePolling } from "./wazzup-max";
 import { getVkStatus, isVkConfigured, sendVkMessage } from "./vk";
+import { deleteVkMessage, editVkMessage } from "./vk/send";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -48,6 +50,7 @@ export async function deleteChannelMessage(params: {
   channel: Channel;
   externalThreadId: string;
   channelMessageId: string;
+  externalId?: string;
   revoke?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   if (params.channel === "telegram") {
@@ -57,7 +60,38 @@ export async function deleteChannelMessage(params: {
       revoke: params.revoke,
     });
   }
+  if (params.channel === "vk" && params.externalId) {
+    return deleteVkMessage({
+      externalThreadId: params.externalThreadId,
+      externalId: params.externalId,
+      revoke: params.revoke,
+    });
+  }
   return { ok: true };
+}
+
+export async function editChannelMessage(params: {
+  channel: Channel;
+  externalThreadId: string;
+  channelMessageId: string;
+  externalId?: string;
+  content: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (params.channel === "telegram") {
+    return editTelegramMessage({
+      externalThreadId: params.externalThreadId,
+      channelMessageId: params.channelMessageId,
+      content: params.content,
+    });
+  }
+  if (params.channel === "vk" && params.externalId) {
+    return editVkMessage({
+      externalThreadId: params.externalThreadId,
+      externalId: params.externalId,
+      content: params.content,
+    });
+  }
+  return { ok: false, error: "Редактирование не поддерживается для этого канала" };
 }
 
 export function isChannelIntegrationActive(channel: Channel): boolean {

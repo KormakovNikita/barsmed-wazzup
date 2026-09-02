@@ -290,3 +290,41 @@ export async function sendVkApiMessage(params: {
   if (!result.ok) return result;
   return { ok: true, messageId: result.data };
 }
+
+export async function editVkApiMessage(params: {
+  accessToken: string;
+  peerId: number;
+  messageId: number;
+  message: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await vkMethod<number>(
+    "messages.edit",
+    {
+      peer_id: params.peerId,
+      message_id: params.messageId,
+      message: params.message,
+    },
+    params.accessToken,
+  );
+  if (!result.ok) return result;
+  return { ok: true };
+}
+
+export async function deleteVkApiMessage(params: {
+  accessToken: string;
+  peerId: number;
+  messageIds: number[];
+  deleteForAll?: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await vkMethod<number>(
+    "messages.delete",
+    {
+      peer_id: params.peerId,
+      message_ids: params.messageIds.join(","),
+      delete_for_all: params.deleteForAll ? 1 : 0,
+    },
+    params.accessToken,
+  );
+  if (!result.ok) return result;
+  return { ok: true };
+}

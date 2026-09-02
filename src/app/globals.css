@@ -174,3 +174,18 @@
     opacity: 0.6;
   }
 }
+
+.message-highlight > div[class*="rounded-2xl"] {
+  animation: message-flash 1s ease-out;
+}
+
+@keyframes message-flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  20%,
+  80% {
+    box-shadow: 0 0 0 3px rgb(251 191 36 / 0.45);
+  }
+}

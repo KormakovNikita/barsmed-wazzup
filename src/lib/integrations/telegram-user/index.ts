@@ -193,6 +193,36 @@ export async function deleteTelegramUserMessages(
   }
 }
 
+export async function editTelegramUserMessage(
+  externalThreadId: string,
+  messageId: string,
+  content: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const c = await getTelegramUserClient();
+    if (!c || !(await c.isUserAuthorized())) {
+      return { ok: false, error: "Личный Telegram не подключён" };
+    }
+
+    const entity = await c.getEntity(externalThreadId);
+    const numericId = Number(messageId);
+    if (!Number.isFinite(numericId)) {
+      return { ok: false, error: "Некорректный ID сообщения" };
+    }
+
+    await c.editMessage(entity, {
+      message: numericId,
+      text: content,
+    });
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Ошибка редактирования",
+    };
+  }
+}
+
 export async function resolveTelegramPeer(
   identifier: string,
 ): Promise<{ peerId: string; name: string; username?: string } | null> {

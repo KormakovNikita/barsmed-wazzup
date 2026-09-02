@@ -355,6 +355,42 @@ export function InboxApp() {
     ]);
   }
 
+  async function handleEditMessage(messageId: string, content: string) {
+    if (!selectedId) return;
+    setSendError(null);
+    const res = await fetch(`/api/messages/${messageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      setSendError(data.error);
+      return;
+    }
+
+    if (data.message) {
+      setConversationDetail((prev) => {
+        if (!prev || prev.id !== selectedId) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.map((message) =>
+            message.id === messageId ? (data.message as Message) : message,
+          ),
+          lastMessagePreview:
+            prev.messages[prev.messages.length - 1]?.id === messageId
+              ? data.message.content?.trim() || prev.lastMessagePreview
+              : prev.lastMessagePreview,
+        };
+      });
+    }
+
+    await Promise.all([
+      fetchConversationDetail(selectedId, { silent: true }),
+      fetchConversations({ silent: true }),
+    ]);
+  }
+
   async function handleAssign(operatorId: string | null) {
     if (!selectedId) return;
     await fetch(`/api/conversations/${selectedId}/assign`, {
@@ -521,6 +557,7 @@ export function InboxApp() {
             syncing={syncing}
             onSendMessage={handleSendMessage}
             onDeleteMessage={handleDeleteMessage}
+            onEditMessage={handleEditMessage}
             onSimulateIncoming={handleSimulateIncoming}
             onDismissReply={handleDismissReply}
             sendError={sendError}

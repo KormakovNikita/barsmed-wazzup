@@ -17,6 +17,7 @@ import {
   isTelegramUserConfigured,
   sendTelegramUserMessage,
   deleteTelegramUserMessages,
+  editTelegramUserMessage,
   startTelegramUserListener,
 } from "./telegram-user";
 import {
@@ -84,6 +85,22 @@ export async function deleteTelegramMessage(params: {
     params.externalThreadId,
     [params.channelMessageId],
     params.revoke ?? false,
+  );
+}
+
+export async function editTelegramMessage(params: {
+  externalThreadId: string;
+  channelMessageId: string;
+  content: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const mode = getTelegramMode();
+  if (mode !== "user") {
+    return { ok: false, error: "Редактирование доступно только для личного Telegram" };
+  }
+  return editTelegramUserMessage(
+    params.externalThreadId,
+    params.channelMessageId,
+    params.content,
   );
 }
 
