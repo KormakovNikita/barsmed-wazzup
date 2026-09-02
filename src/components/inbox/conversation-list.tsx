@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { formatConversationTime } from "@/lib/format-date";
 import { Inbox, MessageCircle, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,8 @@ interface ConversationListProps {
   listFilter?: ConversationListFilter;
   onListFilterChange?: (filter: ConversationListFilter) => void;
   awaitingCount?: number;
+  onDismissAll?: () => void | Promise<void>;
+  dismissingAll?: boolean;
   loading?: boolean;
   error?: string | null;
 }
@@ -69,6 +72,8 @@ export function ConversationList({
   listFilter = "all",
   onListFilterChange,
   awaitingCount = 0,
+  onDismissAll,
+  dismissingAll = false,
   loading = false,
   error = null,
 }: ConversationListProps) {
@@ -149,6 +154,19 @@ export function ConversationList({
               )}
             </button>
           </div>
+        )}
+
+        {onDismissAll && awaitingCount > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-full rounded-xl text-xs"
+            disabled={dismissingAll}
+            onClick={() => void onDismissAll()}
+          >
+            {dismissingAll ? "Помечаем…" : "Прочитать все"}
+          </Button>
         )}
       </div>
 

@@ -111,6 +111,7 @@ export function InboxApp() {
   } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [dismissingAll, setDismissingAll] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
   const pollInFlightRef = useRef(false);
 
@@ -384,6 +385,46 @@ export function InboxApp() {
     ]);
   }
 
+  async function handleDismissAll() {
+    if (dismissingAll || awaitingCount === 0) return;
+    setDismissingAll(true);
+    try {
+      const params = new URLSearchParams();
+      if (activeChannel !== "all") {
+        params.set("channel", activeChannel);
+      }
+      const query = params.toString();
+      const res = await fetch(
+        `/api/conversations/dismiss-all${query ? `?${query}` : ""}`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Не удалось пометить диалоги прочитанными");
+      }
+
+      setConversationDetail((prev) =>
+        prev?.awaitingReply
+          ? { ...prev, awaitingReply: false, unreadCount: 0 }
+          : prev,
+      );
+
+      await Promise.all([
+        fetchConversations({ silent: true }),
+        selectedIdRef.current
+          ? fetchConversationDetail(selectedIdRef.current, { silent: true })
+          : Promise.resolve(),
+        fetchStats(),
+      ]);
+    } catch (error) {
+      setFetchError(
+        error instanceof Error ? error.message : "Ошибка при прочтении диалогов",
+      );
+    } finally {
+      setDismissingAll(false);
+    }
+  }
+
   async function handleDismissReply() {
     if (!selectedId) return;
     await fetch(`/api/conversations/${selectedId}/dismiss`, {
@@ -417,6 +458,8 @@ export function InboxApp() {
     listFilter,
     onListFilterChange: setListFilter,
     awaitingCount,
+    onDismissAll: handleDismissAll,
+    dismissingAll,
     loading: loadingConversations && conversations.length === 0,
     error: fetchError,
   };

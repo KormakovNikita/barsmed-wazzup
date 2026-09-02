@@ -1050,6 +1050,30 @@ export function dismissConversationReply(id: string): Conversation | null {
   });
 }
 
+export function dismissAllAwaitingReplies(
+  channel: Channel | "all" = "all",
+): number {
+  const sortAt = bottomConversationSortTimestamp();
+  const result =
+    channel === "all"
+      ? getDb()
+          .prepare(
+            `UPDATE conversations
+             SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+             WHERE awaiting_reply = 1`,
+          )
+          .run(sortAt)
+      : getDb()
+          .prepare(
+            `UPDATE conversations
+             SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+             WHERE awaiting_reply = 1 AND channel = ?`,
+          )
+          .run(sortAt, channel);
+
+  return result.changes;
+}
+
 export function processIncomingMessage(
   payload: IncomingMessagePayload,
 ): { message: Message; conversation: Conversation; created: boolean } | null {
