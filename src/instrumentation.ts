@@ -121,6 +121,13 @@ export async function register() {
     );
     startVkLongPollListener();
 
+    const { startWhatsAppListener } = await import(
+      "@/lib/integrations/whatsapp"
+    );
+    startWhatsAppListener().catch((error) => {
+      console.error("[instrumentation] WhatsApp listener failed:", error);
+    });
+
     const { reconcileAllConversationReplyStates } = await import("@/lib/store");
     const reconciled = reconcileAllConversationReplyStates();
     if (reconciled > 0) {

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getTelegramMode, resolveTelegramPeer } from "@/lib/integrations/telegram";
 import { resolveMaxPersonalPeer } from "@/lib/integrations/max-personal";
+import {
+  formatWhatsAppPhoneDisplay,
+  normalizeWhatsAppPhone,
+  resolveWhatsAppPeer,
+} from "@/lib/integrations/whatsapp";
 import { startOutboundConversation } from "@/lib/store";
 import type { Channel } from "@/lib/types";
 
@@ -118,8 +123,39 @@ export async function POST(request: Request) {
     });
   }
 
+  if (channel === "whatsapp") {
+    const trimmedRecipient = recipient.trim();
+    const phone = normalizeWhatsAppPhone(trimmedRecipient);
+    if (!phone || phone.length < 10) {
+      return NextResponse.json(
+        { error: "Укажите номер телефона в формате +79001234567" },
+        { status: 400 },
+      );
+    }
+
+    const peer = await resolveWhatsAppPeer(trimmedRecipient);
+    const contactName = peer?.name ?? formatWhatsAppPhoneDisplay(phone);
+
+    const result = await startOutboundConversation({
+      channel,
+      externalThreadId: phone,
+      contactName,
+      content: content.trim(),
+      operatorId,
+      channelUserId: phone,
+    });
+
+    if (!result) {
+      return NextResponse.json({ error: "Не удалось создать диалог" }, { status: 500 });
+    }
+
+    return NextResponse.json(result, {
+      status: result.error ? 502 : 200,
+    });
+  }
+
   return NextResponse.json(
-    { error: "Исходящие сообщения доступны для Telegram, MAX и MAX Personal" },
+    { error: "Исходящие сообщения доступны для Telegram, MAX, MAX Personal и WhatsApp" },
     { status: 400 },
   );
 }

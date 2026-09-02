@@ -6,6 +6,7 @@ import { MaxProxyPanel } from "@/components/settings/max-proxy-panel";
 import { TelegramConnectForm } from "@/components/settings/telegram-connect-form";
 import { TelegramConnectPanel } from "@/components/settings/telegram-connect-panel";
 import { VkConnectPanel } from "@/components/settings/vk-connect-panel";
+import { WhatsAppConnectForm } from "@/components/settings/whatsapp-connect-form";
 import { Button } from "@/components/ui/button";
 
 export default function IntegrationsSettingsPage() {
@@ -45,6 +46,15 @@ export default function IntegrationsSettingsPage() {
       </details>
 
       <MaxConnectPanel />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">WhatsApp Business</h2>
+        <p className="text-sm text-muted-foreground">
+          Переписка с клиентами в WhatsApp напрямую (WhatsApp Web). В России
+          нужен VPN — укажите SOCKS5/HTTP прокси. Без Wazzup.
+        </p>
+        <WhatsAppConnectForm />
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">ВКонтакте — сообщения сообщества</h2>

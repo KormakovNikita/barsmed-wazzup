@@ -26,6 +26,11 @@ import {
 import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, isMaxIncomingConfigured, sendWazzupMaxMessage, shouldMaxUsePolling } from "./wazzup-max";
 import { getVkStatus, isVkConfigured, sendVkMessage } from "./vk";
 import { deleteVkMessage, editVkMessage } from "./vk/send";
+import {
+  getWhatsAppStatus,
+  isWhatsAppConfigured,
+  sendWhatsAppMessage,
+} from "./whatsapp";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -41,6 +46,8 @@ export async function dispatchOutboundMessage(
       return sendMaxPersonalMessage(payload);
     case "vk":
       return sendVkMessage(payload);
+    case "whatsapp":
+      return sendWhatsAppMessage(payload);
     default:
       return { ok: true };
   }
@@ -101,6 +108,7 @@ export function isChannelIntegrationActive(channel: Channel): boolean {
     return isMaxPersonalEnabled() && hasMaxPersonalSession();
   }
   if (channel === "vk") return isVkConfigured();
+  if (channel === "whatsapp") return isWhatsAppConfigured();
   return false;
 }
 
@@ -147,6 +155,7 @@ export async function getIntegrationStatus() {
     maxIncoming === "wazzup" ? await getWazzupMaxStatus() : null;
   const maxPersonal = await getMaxPersonalStatus();
   const vk = await getVkStatus();
+  const whatsapp = await getWhatsAppStatus();
 
   return {
     telegram: {
@@ -212,6 +221,14 @@ export async function getIntegrationStatus() {
       profile: vk.profile,
       error: vk.error ?? null,
       webhookUrl: vk.webhookUrl ?? null,
+    },
+    whatsapp: {
+      enabled: whatsapp.enabled,
+      configured: whatsapp.configured,
+      connected: whatsapp.connected,
+      proxyConfigured: whatsapp.proxyConfigured,
+      profile: whatsapp.profile,
+      error: whatsapp.error ?? null,
     },
     webhookBaseUrl: webhookBase ?? null,
     maxWebhookBaseUrl: maxWebhookBase,
