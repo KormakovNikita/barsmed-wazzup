@@ -35,6 +35,24 @@ export async function POST(request: Request) {
   const apiHash = body.apiHash?.trim();
   const proxy = body.proxy?.trim();
 
+  const existingId = getSetting("telegram_api_id") ?? process.env.TELEGRAM_API_ID;
+  const existingHash =
+    getSetting("telegram_api_hash") ?? process.env.TELEGRAM_API_HASH;
+
+  if (proxy && !apiId && !apiHash) {
+    if (!parseTelegramProxyUrl(proxy)) {
+      return NextResponse.json(
+        {
+          error:
+            "Некорректный прокси. SOCKS5: socks5://user:pass@host:1080 или MTProxy: ссылка t.me/proxy?...",
+        },
+        { status: 400 },
+      );
+    }
+    setSetting("telegram_proxy", proxy);
+    return NextResponse.json({ ok: true });
+  }
+
   if (!apiId || !apiHash) {
     return NextResponse.json(
       { error: "API ID и API Hash обязательны" },
