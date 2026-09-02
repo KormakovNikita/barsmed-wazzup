@@ -165,12 +165,22 @@ function scheduleReconnect(): void {
   }, 5000);
 }
 
+export function isWhatsAppSocketLive(): boolean {
+  return Boolean(socket?.user && socketConnected);
+}
+
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
   if (!isWhatsAppEnabled()) return null;
 
   if (socket?.user && socketConnected) {
     ensureHandler(socket);
     return socket;
+  }
+
+  if (sessionLoggedOut) {
+    lastBootError =
+      lastBootError ?? "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках.";
+    return null;
   }
 
   if (connecting) return connecting;

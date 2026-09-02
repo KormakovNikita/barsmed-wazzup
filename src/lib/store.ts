@@ -338,13 +338,14 @@ function findExistingMessageRow(
       .prepare(
         `SELECT * FROM messages
          WHERE conversation_id = ?
-           AND (external_id = ? OR external_id LIKE ? OR external_id LIKE ? OR external_id = ?)
+           AND (external_id = ? OR external_id = ? OR external_id LIKE ? OR external_id LIKE ? OR external_id = ?)
          ORDER BY created_at DESC
          LIMIT 1`,
       )
       .get(
         conversationId,
         payload.channelMessageId,
+        `wa-${payload.channelMessageId}`,
         `tg-user-${payload.channelMessageId}-%`,
         `tg-bot-%${payload.channelMessageId}`,
         `max-${payload.channelMessageId}`,
@@ -380,6 +381,22 @@ function findExistingMessageRow(
   }
 
   return undefined;
+}
+
+function repairMessageTimestamp(
+  messageId: string,
+  createdAt: string | undefined,
+  existingCreatedAt: string,
+): void {
+  if (!createdAt) return;
+  const existingMs = new Date(existingCreatedAt).getTime();
+  const incomingMs = new Date(createdAt).getTime();
+  if (!Number.isFinite(existingMs) || !Number.isFinite(incomingMs)) return;
+  if (Math.abs(existingMs - incomingMs) < 60 * 60 * 1000) return;
+
+  getDb()
+    .prepare("UPDATE messages SET created_at = ? WHERE id = ?")
+    .run(createdAt, messageId);
 }
 
 function isMediaPreviewContent(content: string): boolean {
@@ -626,6 +643,42 @@ function updateMessage(message: Message): void {
       status: message.status,
       externalId: message.externalId ?? null,
     });
+}
+
+const MESSAGE_STATUS_RANK: Record<Message["status"], number> = {
+  failed: 0,
+  sent: 1,
+  delivered: 2,
+  read: 3,
+};
+
+export function updateWhatsAppMessageDeliveryStatus(
+  channelMessageId: string,
+  status: Message["status"],
+): void {
+  const row = getDb()
+    .prepare(
+      `SELECT m.id, m.status
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.channel = 'whatsapp'
+         AND m.direction = 'out'
+         AND (m.external_id = ? OR m.external_id = ?)
+       LIMIT 1`,
+    )
+    .get(channelMessageId, `wa-${channelMessageId}`) as
+    | { id: string; status: Message["status"] }
+    | undefined;
+
+  if (!row) return;
+
+  const currentRank = MESSAGE_STATUS_RANK[row.status] ?? 0;
+  const nextRank = MESSAGE_STATUS_RANK[status] ?? 0;
+  if (nextRank <= currentRank) return;
+
+  getDb()
+    .prepare("UPDATE messages SET status = ? WHERE id = ?")
+    .run(status, row.id);
 }
 
 function getContact(id: string): Contact | undefined {
@@ -1159,6 +1212,8 @@ export function processIncomingMessage(
       return { message: edited, conversation: existing, created: false };
     }
 
+    repairMessageTimestamp(lastMessage.id, payload.createdAt, lastMessage.created_at);
+
     return {
       message: rowToMessage(
         lastMessage,
@@ -1274,6 +1329,12 @@ export function processIncomingMessage(
       };
     }
 
+    repairMessageTimestamp(
+      duplicateOutbound.id,
+      payload.createdAt,
+      duplicateOutbound.created_at,
+    );
+
     return {
       message: rowToMessage(
         duplicateOutbound,
@@ -1303,7 +1364,7 @@ export function processIncomingMessage(
           payload.replyToChannelMessageId,
         )
       : undefined,
-    createdAt: new Date().toISOString(),
+    createdAt: payload.createdAt ?? new Date().toISOString(),
   };
 
   let savedAttachments: MessageAttachment[] | undefined;
@@ -1732,7 +1793,7 @@ export async function sendMessage(
       replyToChannelMessageId,
     });
 
-    message.status = result.ok ? "delivered" : "failed";
+    message.status = result.ok ? "sent" : "failed";
     if (result.externalId) {
       message.externalId = result.externalId;
       getDb()

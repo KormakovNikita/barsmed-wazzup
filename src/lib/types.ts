@@ -140,6 +140,8 @@ export interface IncomingMessagePayload {
   maxUserId?: string;
   /** in = from client, out = from bot/operator */
   direction?: "in" | "out";
+  /** ISO timestamp from the channel (WhatsApp messageTimestamp, Telegram date, etc.) */
+  createdAt?: string;
 }
 
 export interface OutboundMessagePayload {

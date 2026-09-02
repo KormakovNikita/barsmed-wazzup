@@ -1,5 +1,8 @@
 import type { OutboundMessagePayload } from "@/lib/types";
-import { getWhatsAppSocket } from "@/lib/integrations/whatsapp/client";
+import {
+  getWhatsAppSocket,
+  isWhatsAppSocketLive,
+} from "@/lib/integrations/whatsapp/client";
 import {
   formatWhatsAppPhoneDisplay,
   normalizeWhatsAppPhone,
@@ -24,7 +27,7 @@ export async function sendWhatsAppMessage(
   payload: OutboundMessagePayload,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   const sock = await getWhatsAppSocket();
-  if (!sock?.user) {
+  if (!sock?.user || !isWhatsAppSocketLive()) {
     return {
       ok: false,
       error:

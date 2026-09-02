@@ -3,10 +3,14 @@ import {
   downloadMediaMessage,
   getContentType,
   isJidGroup,
+  WAMessageStatus,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { mediaPreviewLabel } from "@/lib/media-storage";
-import { processIncomingMessage } from "@/lib/store";
+import {
+  processIncomingMessage,
+  updateWhatsAppMessageDeliveryStatus,
+} from "@/lib/store";
 import type { IncomingAttachmentPayload, MessageMediaType } from "@/lib/types";
 import {
   formatWhatsAppPhoneDisplay,
@@ -121,6 +125,19 @@ function getReplyToId(message: WAMessage): string | undefined {
   return undefined;
 }
 
+function messageTimestampToIso(message: WAMessage): string | undefined {
+  const raw = message.messageTimestamp;
+  if (raw == null) return undefined;
+
+  const seconds =
+    typeof raw === "object" && raw !== null && "toNumber" in raw
+      ? (raw as { toNumber: () => number }).toNumber()
+      : Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+
+  return new Date(seconds * 1000).toISOString();
+}
+
 async function handleWhatsAppMessage(
   sock: WASocket,
   message: WAMessage,
@@ -172,10 +189,38 @@ async function handleWhatsAppMessage(
     direction: message.key.fromMe ? "out" : "in",
     replyToChannelMessageId: getReplyToId(message),
     attachments,
+    createdAt: messageTimestampToIso(message),
   });
 }
 
+function mapWhatsAppDeliveryStatus(
+  status: proto.WebMessageInfo.Status | null | undefined,
+): "sent" | "delivered" | "read" | "failed" | null {
+  if (status == null) return null;
+  if (status === WAMessageStatus.ERROR) return "failed";
+  if (status === WAMessageStatus.READ || status === WAMessageStatus.PLAYED) {
+    return "read";
+  }
+  if (status === WAMessageStatus.DELIVERY_ACK) return "delivered";
+  if (
+    status === WAMessageStatus.SERVER_ACK ||
+    status === WAMessageStatus.PENDING
+  ) {
+    return "sent";
+  }
+  return null;
+}
+
 export function attachWhatsAppMessageHandler(sock: WASocket): void {
+  sock.ev.on("messages.update", (updates) => {
+    for (const { key, update } of updates) {
+      if (!key.fromMe || !key.id || update.status == null) continue;
+      const mapped = mapWhatsAppDeliveryStatus(update.status);
+      if (!mapped) continue;
+      updateWhatsAppMessageDeliveryStatus(key.id, mapped);
+    }
+  });
+
   sock.ev.on("messages.upsert", ({ messages, type }) => {
     if (type !== "notify" && type !== "append") return;
     for (const message of messages) {
