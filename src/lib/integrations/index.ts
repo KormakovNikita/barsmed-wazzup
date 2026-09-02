@@ -23,6 +23,7 @@ import {
   sendMaxPersonalMessage,
 } from "./max-personal";
 import { getMaxIncomingMode, getMaxWebhookBaseUrl, getWazzupMaxStatus, getWazzupWebhookBaseUrl, isMaxIncomingConfigured, sendWazzupMaxMessage, shouldMaxUsePolling } from "./wazzup-max";
+import { getVkStatus, isVkConfigured, sendVkMessage } from "./vk";
 
 export async function dispatchOutboundMessage(
   payload: OutboundMessagePayload,
@@ -36,6 +37,8 @@ export async function dispatchOutboundMessage(
         : sendMaxMessage(payload);
     case "max_personal":
       return sendMaxPersonalMessage(payload);
+    case "vk":
+      return sendVkMessage(payload);
     default:
       return { ok: true };
   }
@@ -63,6 +66,7 @@ export function isChannelIntegrationActive(channel: Channel): boolean {
   if (channel === "max_personal") {
     return isMaxPersonalEnabled() && hasMaxPersonalSession();
   }
+  if (channel === "vk") return isVkConfigured();
   return false;
 }
 
@@ -108,6 +112,7 @@ export async function getIntegrationStatus() {
   const wazzupMax =
     maxIncoming === "wazzup" ? await getWazzupMaxStatus() : null;
   const maxPersonal = await getMaxPersonalStatus();
+  const vk = await getVkStatus();
 
   return {
     telegram: {
@@ -165,6 +170,14 @@ export async function getIntegrationStatus() {
       connected: maxPersonal.connected,
       profile: maxPersonal.profile,
       error: maxPersonal.error ?? null,
+    },
+    vk: {
+      configured: vk.configured,
+      connected: vk.connected,
+      mode: vk.mode,
+      profile: vk.profile,
+      error: vk.error ?? null,
+      webhookUrl: vk.webhookUrl ?? null,
     },
     webhookBaseUrl: webhookBase ?? null,
     maxWebhookBaseUrl: maxWebhookBase,

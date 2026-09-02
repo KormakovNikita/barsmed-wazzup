@@ -93,6 +93,9 @@ function messageSupportsReply(
     if (/^max-(mid\.)/.test(msg.externalId)) return true;
     return false;
   }
+  if (channel === "vk") {
+    return Boolean(msg.externalId?.startsWith("vk-"));
+  }
   return false;
 }
 

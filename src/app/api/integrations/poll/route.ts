@@ -3,6 +3,7 @@ import { parseTelegramWebhookBody } from "@/lib/integrations";
 import { drainMaxUpdates } from "@/lib/integrations/max-polling";
 import { drainTelegramUpdates } from "@/lib/integrations/telegram-polling";
 import { drainTelegramUserUpdates } from "@/lib/integrations/telegram-user-polling";
+import { drainVkLongPollUpdates } from "@/lib/integrations/vk";
 import { getTelegramMode, pollTelegramUpdates } from "@/lib/integrations/telegram";
 import { processIncomingMessage } from "@/lib/store";
 
@@ -58,6 +59,15 @@ async function runPoll(): Promise<{
   for (const event of maxEvents) {
     processed.push({
       channel: "max",
+      conversationId: event.conversationId,
+      created: event.created,
+    });
+  }
+
+  const vkEvents = await drainVkLongPollUpdates();
+  for (const event of vkEvents) {
+    processed.push({
+      channel: "vk",
       conversationId: event.conversationId,
       created: event.created,
     });

@@ -4,6 +4,7 @@ import { MaxPersonalConnectForm } from "@/components/settings/max-personal-conne
 import { MaxProxyPanel } from "@/components/settings/max-proxy-panel";
 import { TelegramConnectForm } from "@/components/settings/telegram-connect-form";
 import { TelegramConnectPanel } from "@/components/settings/telegram-connect-panel";
+import { VkConnectPanel } from "@/components/settings/vk-connect-panel";
 import { Button } from "@/components/ui/button";
 
 export default function IntegrationsSettingsPage() {
@@ -40,6 +41,16 @@ export default function IntegrationsSettingsPage() {
       </details>
 
       <MaxConnectPanel />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">ВКонтакте — сообщения сообщества</h2>
+        <p className="text-sm text-muted-foreground">
+          Клиенты пишут в личные сообщения вашего сообщества VK. HubDesk
+          получает их через Long Poll (работает без HTTPS) и позволяет отвечать
+          из единого inbox.
+        </p>
+        <VkConnectPanel />
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">MAX Personal — исходящие сообщения</h2>
