@@ -8,7 +8,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: ui-monospace, "Courier New", monospace;
   --font-heading: var(--font-sans);
   --color-brand-dark: var(--brand-dark);
   --color-brand-light: var(--brand-light);
@@ -54,8 +54,9 @@
   /* БАРСМЕД: Опаловый зелёный #0B605B, Желто-зелёный #46C162, белый */
   --brand-dark: #0b605b;
   --brand-light: #46c162;
+  --font-sans: Arial, "Helvetica Neue", Helvetica, sans-serif;
   --background: #ffffff;
-  --foreground: #0f2f2d;
+  --foreground: #1a3330;
   --card: #ffffff;
   --card-foreground: #0f2f2d;
   --popover: #ffffff;
@@ -131,24 +132,25 @@
 
 @layer utilities {
   .bg-chat-pattern {
-    background-color: #f7fbf8;
+    background-color: #fcfefc;
     background-image: radial-gradient(
-      rgb(11 96 91 / 6%) 1px,
+      rgb(11 96 91 / 4%) 1px,
       transparent 1px
     );
     background-size: 20px 20px;
   }
 
   .bubble-out {
-    background: linear-gradient(135deg, #0b605b 0%, #0d756e 55%, #128a7f 100%);
-    color: #ffffff;
-    box-shadow: 0 1px 3px rgb(11 96 91 / 22%);
+    background: linear-gradient(135deg, #e4f4e8 0%, #d6eedc 100%);
+    color: #1a3330;
+    border: 1px solid #c5e3cc;
+    box-shadow: 0 1px 2px rgb(11 96 91 / 8%);
   }
 
   .bubble-in {
     background: #ffffff;
-    border: 1px solid #dceee4;
-    box-shadow: 0 1px 2px rgb(11 96 91 / 6%);
+    border: 1px solid #e2eee6;
+    box-shadow: 0 1px 2px rgb(11 96 91 / 4%);
   }
 
   .glass-panel {

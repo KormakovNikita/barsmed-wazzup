@@ -71,7 +71,7 @@ function ReplyQuote({
       }}
       className={cn(
         "mb-2 w-full border-l-2 pl-2 text-left text-xs opacity-90 transition-opacity hover:opacity-100",
-        isOut ? "border-white/40" : "border-primary/40",
+        isOut ? "border-brand-dark/25" : "border-primary/40",
         onJump && "cursor-pointer",
       )}
     >
@@ -243,7 +243,7 @@ function AttachmentView({
       rel="noreferrer"
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline",
-        isOut ? "text-primary-foreground" : "text-foreground",
+        isOut ? "text-foreground" : "text-foreground",
       )}
     >
       📎 {attachment.fileName ?? "Скачать файл"}
@@ -666,7 +666,7 @@ export function ChatPanel({
                           value={editDraft}
                           onChange={(event) => setEditDraft(event.target.value)}
                           rows={3}
-                          className="min-h-[72px] resize-none border-white/20 bg-black/10 text-sm text-inherit"
+                          className="min-h-[72px] resize-none border-border bg-white/80 text-sm text-foreground"
                           autoFocus
                         />
                         <div className="flex justify-end gap-2">
@@ -702,7 +702,7 @@ export function ChatPanel({
                           <p
                             className={cn(
                               "mb-1 whitespace-pre-wrap break-words text-[13px] line-through opacity-60",
-                              isOut ? "text-white/70" : "text-muted-foreground",
+                              isOut ? "text-muted-foreground" : "text-muted-foreground",
                             )}
                           >
                             {msg.previousContent}
@@ -714,7 +714,7 @@ export function ChatPanel({
                         <div
                           className={cn(
                             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-                            isOut ? "text-white/75" : "text-muted-foreground",
+                            isOut ? "text-muted-foreground" : "text-muted-foreground",
                           )}
                         >
                           <span>
