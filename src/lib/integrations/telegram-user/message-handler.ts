@@ -5,6 +5,7 @@ import type { TelegramClient } from "teleproto";
 import { mediaPreviewLabel } from "@/lib/media-storage";
 import { processIncomingMessage } from "@/lib/store";
 import { extractTelegramMedia, inspectTelegramMedia } from "./media";
+import { rememberTelegramPeer } from "./entity";
 
 type IncomingTelegramMessage = CustomMessage | Api.Message;
 
@@ -30,6 +31,7 @@ async function resolveSenderInfo(message: IncomingTelegramMessage): Promise<{
   name: string;
   username?: string;
   skip: boolean;
+  entity?: unknown;
 }> {
   if (!("getSender" in message) || typeof message.getSender !== "function") {
     return { name: "Telegram", skip: false };
@@ -41,7 +43,7 @@ async function resolveSenderInfo(message: IncomingTelegramMessage): Promise<{
   }
 
   if ("bot" in sender && sender.bot) {
-    return { name: "Bot", skip: true };
+    return { name: "Bot", skip: true, entity: sender };
   }
 
   if ("firstName" in sender) {
@@ -53,14 +55,15 @@ async function resolveSenderInfo(message: IncomingTelegramMessage): Promise<{
       name: name || sender.username || "Telegram",
       username: sender.username ?? undefined,
       skip: false,
+      entity: sender,
     };
   }
 
   if ("title" in sender) {
-    return { name: String(sender.title), skip: false };
+    return { name: String(sender.title), skip: false, entity: sender };
   }
 
-  return { name: "Telegram", skip: false };
+  return { name: "Telegram", skip: false, entity: sender };
 }
 
 function getReplyToChannelMessageId(
@@ -84,7 +87,7 @@ function getReplyToChannelMessageId(
 async function resolvePeerInfo(
   message: IncomingTelegramMessage,
   client?: TelegramClient | null,
-): Promise<{ name: string; username?: string }> {
+): Promise<{ name: string; username?: string; entity?: unknown }> {
   if (!client || !("peerId" in message) || !message.peerId) {
     return { name: "Telegram" };
   }
@@ -99,11 +102,13 @@ async function resolvePeerInfo(
       return {
         name: name || entity.username || "Telegram",
         username: entity.username ?? undefined,
+        entity,
       };
     }
     if ("title" in entity) {
-      return { name: String(entity.title) };
+      return { name: String(entity.title), entity };
     }
+    return { name: "Telegram", entity };
   } catch {
     // fall through
   }
@@ -129,11 +134,13 @@ export async function processTelegramUserMessage(
     const peer = await resolvePeerInfo(message, client);
     name = peer.name;
     username = peer.username;
+    rememberTelegramPeer(threadId, peer.entity, username);
   } else {
     const sender = await resolveSenderInfo(message);
     if (sender.skip) return null;
     name = sender.name;
     username = sender.username;
+    rememberTelegramPeer(threadId, sender.entity, username);
   }
 
   const messageId = "id" in message ? message.id : 0;

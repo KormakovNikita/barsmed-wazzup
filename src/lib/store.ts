@@ -120,20 +120,6 @@ function rowToConversation(row: ConversationRow): Conversation {
   };
 }
 
-function bottomConversationSortTimestamp(): string {
-  const row = getDb()
-    .prepare(
-      "SELECT MIN(updated_at) AS min_updated FROM conversations WHERE awaiting_reply = 0",
-    )
-    .get() as { min_updated: string | null };
-
-  if (!row.min_updated) {
-    return new Date(0).toISOString();
-  }
-
-  return new Date(new Date(row.min_updated).getTime() - 1000).toISOString();
-}
-
 function syncAwaitingReplyFromLastMessage(conversationId: string): void {
   const lastInbound = getDb()
     .prepare(
@@ -1242,7 +1228,7 @@ export function listOperators(): Operator[] {
 
 export function listConversations(channel?: Channel | "all"): Conversation[] {
   seedDemoDataIfEmpty();
-  const orderBy = "ORDER BY awaiting_reply DESC, updated_at DESC";
+  const orderBy = "ORDER BY updated_at DESC";
   const rows =
     channel && channel !== "all"
       ? (getDb()
@@ -1308,7 +1294,7 @@ export function searchConversations(
          )
        )
        ${channelFilter}
-       ORDER BY c.awaiting_reply DESC, c.updated_at DESC`,
+       ORDER BY c.updated_at DESC`,
     )
     .all(...params) as ConversationRow[];
 
@@ -1378,43 +1364,40 @@ export function dismissConversationReply(id: string): Conversation | null {
     .get(id) as ConversationRow | undefined;
   if (!row) return null;
 
-  const sortAt = bottomConversationSortTimestamp();
   getDb()
     .prepare(
       `UPDATE conversations
-       SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+       SET awaiting_reply = 0, unread_count = 0
        WHERE id = ?`,
     )
-    .run(sortAt, id);
+    .run(id);
 
   return rowToConversation({
     ...row,
     awaiting_reply: 0,
     unread_count: 0,
-    updated_at: sortAt,
   });
 }
 
 export function dismissAllAwaitingReplies(
   channel: Channel | "all" = "all",
 ): number {
-  const sortAt = bottomConversationSortTimestamp();
   const result =
     channel === "all"
       ? getDb()
           .prepare(
             `UPDATE conversations
-             SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+             SET awaiting_reply = 0, unread_count = 0
              WHERE awaiting_reply = 1`,
           )
-          .run(sortAt)
+          .run()
       : getDb()
           .prepare(
             `UPDATE conversations
-             SET awaiting_reply = 0, unread_count = 0, updated_at = ?
+             SET awaiting_reply = 0, unread_count = 0
              WHERE awaiting_reply = 1 AND channel = ?`,
           )
-          .run(sortAt, channel);
+          .run(channel);
 
   return result.changes;
 }
@@ -2075,6 +2058,11 @@ export async function sendMessage(
           )
         : undefined;
 
+    const outboundContact = getContactForConversation(conversation.contactId);
+    const telegramUsername = outboundContact?.notes?.match(
+      /@([A-Za-z0-9_]{4,})/,
+    )?.[1];
+
     const result = await dispatchOutboundMessage({
       channel: conversation.channel,
       externalThreadId:
@@ -2087,6 +2075,7 @@ export async function sendMessage(
       attachments,
       attachmentUrls,
       replyToChannelMessageId,
+      peerUsername: telegramUsername,
     });
 
     message.status = result.ok ? "sent" : "failed";

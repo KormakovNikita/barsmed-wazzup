@@ -97,7 +97,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
-`;
+
+CREATE TABLE IF NOT EXISTS telegram_peers (
+  peer_id TEXT PRIMARY KEY,
+  access_hash TEXT,
+  username TEXT,
+  updated_at TEXT NOT NULL
+);
+`
 
 function registerDbFunctions(database: Database.Database): void {
   database.function(
@@ -201,6 +208,33 @@ function migrateSchema(database: Database.Database): void {
       "ALTER TABLE contacts ADD COLUMN is_vip INTEGER NOT NULL DEFAULT 0",
     );
   }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS telegram_peers (
+      peer_id TEXT PRIMARY KEY,
+      access_hash TEXT,
+      username TEXT,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // "Не отвечать" used to bury chats by rewriting updated_at. Restore last activity.
+  database.exec(`
+    UPDATE conversations
+    SET updated_at = (
+      SELECT MAX(m.created_at)
+      FROM messages m
+      WHERE m.conversation_id = conversations.id
+    )
+    WHERE EXISTS (
+      SELECT 1 FROM messages m WHERE m.conversation_id = conversations.id
+    )
+    AND updated_at < (
+      SELECT MAX(m.created_at)
+      FROM messages m
+      WHERE m.conversation_id = conversations.id
+    )
+  `);
 }
 
 export function isDatabaseEmpty(): boolean {

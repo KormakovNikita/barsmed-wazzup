@@ -167,4 +167,6 @@ export interface OutboundMessagePayload {
   maxChatId?: string;
   /** MAX: client user_id (fallback delivery) */
   maxUserId?: string;
+  /** Telegram username without @, used when peer cache is empty */
+  peerUsername?: string;
 }

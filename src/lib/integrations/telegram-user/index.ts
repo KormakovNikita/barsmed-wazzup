@@ -18,6 +18,7 @@ import {
   readTelegramSession,
   writeTelegramSession,
 } from "./session";
+import { resolveTelegramSendEntity } from "./entity";
 
 let client: TelegramClient | null = null;
 let listenerStarted = false;
@@ -115,6 +116,7 @@ export async function sendTelegramUserMessage(
   content: string,
   attachments?: import("@/lib/types").OutboundAttachmentPayload[],
   replyToChannelMessageId?: string,
+  peerUsername?: string,
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   try {
     const c = await getTelegramUserClient();
@@ -122,7 +124,9 @@ export async function sendTelegramUserMessage(
       return { ok: false, error: "Личный Telegram не подключён" };
     }
 
-    const entity = await c.getEntity(externalThreadId);
+    const entity = await resolveTelegramSendEntity(c, externalThreadId, {
+      username: peerUsername,
+    });
     const replyTo = replyToChannelMessageId &&
       Number.isFinite(Number(replyToChannelMessageId))
       ? Number(replyToChannelMessageId)
@@ -175,7 +179,7 @@ export async function deleteTelegramUserMessages(
       return { ok: false, error: "Личный Telegram не подключён" };
     }
 
-    const entity = await c.getEntity(externalThreadId);
+    const entity = await resolveTelegramSendEntity(c, externalThreadId);
     const numericIds = messageIds
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id));
@@ -204,7 +208,7 @@ export async function editTelegramUserMessage(
       return { ok: false, error: "Личный Telegram не подключён" };
     }
 
-    const entity = await c.getEntity(externalThreadId);
+    const entity = await resolveTelegramSendEntity(c, externalThreadId);
     const numericId = Number(messageId);
     if (!Number.isFinite(numericId)) {
       return { ok: false, error: "Некорректный ID сообщения" };
@@ -243,6 +247,8 @@ export async function resolveTelegramPeer(
           : normalized;
 
     const username = "username" in entity ? entity.username : undefined;
+    const { rememberTelegramPeer } = await import("./entity");
+    rememberTelegramPeer(peerId, entity, username ?? undefined);
 
     return { peerId, name, username: username ?? undefined };
   } catch {
@@ -352,6 +358,9 @@ export async function startTelegramUserListener() {
 
   listenerStarted = true;
   console.info("[telegram-user] starting incoming message listener");
+  void c.getDialogs({ limit: 100 }).catch((error) => {
+    console.warn("[telegram-user] dialog cache warm failed:", error);
+  });
 
   c.addEventHandler(
     async (event) => {
