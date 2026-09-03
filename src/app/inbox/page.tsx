@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { InboxApp } from "@/components/inbox/inbox-app";
 
 export default function InboxPage() {
-  return <InboxApp />;
+  return (
+    <Suspense fallback={<div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">Загрузка…</div>}>
+      <InboxApp />
+    </Suspense>
+  );
 }

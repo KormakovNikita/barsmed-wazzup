@@ -82,13 +82,33 @@ export function ChannelBadge({
   );
 }
 
-export function ChannelLabel({ channel }: { channel: Channel }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
+export function ChannelLabel({
+  channel,
+  href,
+}: {
+  channel: Channel;
+  href?: string;
+}) {
+  const content = (
+    <>
       <ChannelBadge channel={channel} />
       <span className="text-xs text-muted-foreground">
         {CHANNEL_CONFIG[channel].label}
       </span>
-    </span>
+    </>
+  );
+
+  if (!href) {
+    return <span className="inline-flex items-center gap-1.5">{content}</span>;
+  }
+
+  return (
+    <a
+      href={href}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background px-2 py-1 transition-colors hover:border-primary/40 hover:bg-primary/5"
+      title={`Открыть диалог в ${CHANNEL_CONFIG[channel].label}`}
+    >
+      {content}
+    </a>
   );
 }

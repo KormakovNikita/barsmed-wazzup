@@ -222,9 +222,22 @@ export function ContactPanel({
               Мессенджеры
             </p>
             <div className="flex flex-wrap gap-2">
-              {messengers.map((channel) => (
-                <ChannelLabel key={channel} channel={channel} />
-              ))}
+              {messengers.map((channel) => {
+                const conversationId =
+                  contact.channelConversations?.[channel] ??
+                  (channel === conversation.channel ? conversation.id : undefined);
+                return (
+                  <ChannelLabel
+                    key={channel}
+                    channel={channel}
+                    href={
+                      conversationId
+                        ? `/inbox?conversation=${encodeURIComponent(conversationId)}`
+                        : undefined
+                    }
+                  />
+                );
+              })}
             </div>
           </div>
 

@@ -1036,25 +1036,34 @@ export function seedDemoDataIfEmpty(): void {
 export function getContactForConversation(contactId: string): Contact | undefined {
   const contact = getContact(contactId);
   if (!contact) return undefined;
-  return {
-    ...contact,
-    channels: getContactChannels(contactId, contact),
-  };
+  return enrichContact(contact);
+}
+
+function getContactConversationMap(
+  contactId: string,
+): Partial<Record<Channel, string>> {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, channel FROM conversations
+       WHERE contact_id = ?
+       ORDER BY updated_at DESC`,
+    )
+    .all(contactId) as Array<{ id: string; channel: Channel }>;
+
+  const map: Partial<Record<Channel, string>> = {};
+  for (const row of rows) {
+    if (!map[row.channel]) map[row.channel] = row.id;
+  }
+  return map;
 }
 
 function getContactChannels(
   contactId: string,
   contact?: Contact,
+  conversationMap?: Partial<Record<Channel, string>>,
 ): Channel[] {
-  const fromConversations = getDb()
-    .prepare(
-      "SELECT DISTINCT channel FROM conversations WHERE contact_id = ?",
-    )
-    .all(contactId) as Array<{ channel: Channel }>;
-
-  const channels = new Set<Channel>(
-    fromConversations.map((row) => row.channel),
-  );
+  const map = conversationMap ?? getContactConversationMap(contactId);
+  const channels = new Set<Channel>(Object.keys(map) as Channel[]);
 
   const source = contact ?? getContact(contactId);
   if (source?.channelUserIds) {
@@ -1066,6 +1075,15 @@ function getContactChannels(
   return ALL_CHANNELS.filter((channel) => channels.has(channel));
 }
 
+function enrichContact(contact: Contact): Contact {
+  const channelConversations = getContactConversationMap(contact.id);
+  return {
+    ...contact,
+    channelConversations,
+    channels: getContactChannels(contact.id, contact, channelConversations),
+  };
+}
+
 export function listContacts(query?: string): Contact[] {
   seedDemoDataIfEmpty();
   const rows = getDb()
@@ -1075,13 +1093,7 @@ export function listContacts(query?: string): Contact[] {
     )
     .all() as ContactRow[];
 
-  const contacts = rows.map((row) => {
-    const contact = rowToContact(row);
-    return {
-      ...contact,
-      channels: getContactChannels(contact.id, contact),
-    };
-  });
+  const contacts = rows.map((row) => enrichContact(rowToContact(row)));
 
   const trimmed = query?.trim();
   if (!trimmed) return contacts;
@@ -1107,10 +1119,7 @@ export function listContacts(query?: string): Contact[] {
 export function getContactById(id: string): Contact | null {
   const contact = getContact(id);
   if (!contact) return null;
-  return {
-    ...contact,
-    channels: getContactChannels(id, contact),
-  };
+  return enrichContact(contact);
 }
 
 export function updateContactDetails(

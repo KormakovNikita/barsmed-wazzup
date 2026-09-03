@@ -274,9 +274,21 @@ export function ContactsApp() {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
                     {contact.channels?.length ? (
-                      contact.channels.map((channel) => (
-                        <ChannelLabel key={channel} channel={channel} />
-                      ))
+                      contact.channels.map((channel) => {
+                        const conversationId =
+                          contact.channelConversations?.[channel];
+                        return (
+                          <ChannelLabel
+                            key={channel}
+                            channel={channel}
+                            href={
+                              conversationId
+                                ? `/inbox?conversation=${encodeURIComponent(conversationId)}`
+                                : undefined
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <span className="text-xs text-muted-foreground">
                         Нет мессенджеров

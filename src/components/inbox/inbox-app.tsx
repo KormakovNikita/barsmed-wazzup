@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { AppSidebar } from "@/components/inbox/app-sidebar";
@@ -76,11 +77,15 @@ function mergeConversationDetail(
 }
 
 export function InboxApp() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeChannel, setActiveChannel] = useState<Channel | "all">("all");
   const [conversations, setConversations] = useState<
     (Conversation & { contact?: Contact })[]
   >([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => searchParams.get("conversation"),
+  );
   const [conversationDetail, setConversationDetail] =
     useState<ConversationDetail | null>(null);
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -270,11 +275,22 @@ export function InboxApp() {
     };
   }, [refreshInbox]);
 
+  useEffect(() => {
+    const fromUrl = searchParams.get("conversation");
+    if (fromUrl && fromUrl !== selectedIdRef.current) {
+      selectedIdRef.current = fromUrl;
+      setSelectedId(fromUrl);
+    }
+  }, [searchParams]);
+
   function handleSelect(id: string) {
     if (id === selectedId) return;
     selectedIdRef.current = id;
     setSelectedId(id);
     setMobileOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("conversation", id);
+    router.replace(`/inbox?${params.toString()}`, { scroll: false });
   }
 
   async function handleSendMessage(

@@ -39,6 +39,8 @@ export interface Contact {
   channelUserIds?: Partial<Record<Channel, string>>;
   /** Messengers where this contact has dialogs or linked IDs */
   channels?: Channel[];
+  /** Conversation id per messenger for quick open */
+  channelConversations?: Partial<Record<Channel, string>>;
 }
 
 export type MessageMediaType =
