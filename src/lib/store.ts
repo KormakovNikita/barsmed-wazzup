@@ -11,6 +11,7 @@ import {
 } from "@/lib/media-storage";
 import type {
   Channel,
+  ClientStatus,
   Contact,
   Conversation,
   ConversationDetail,
@@ -35,6 +36,8 @@ type ContactRow = {
   deal_stage: DealStage;
   notes: string | null;
   channel_user_ids: string | null;
+  client_status?: string | null;
+  is_vip?: number | null;
 };
 
 type ConversationRow = {
@@ -77,6 +80,13 @@ type AttachmentRow = {
   created_at: string;
 };
 
+function parseClientStatus(value: string | null | undefined): ClientStatus | null {
+  if (value === "warm" || value === "non_target" || value === "booked") {
+    return value;
+  }
+  return null;
+}
+
 function rowToContact(row: ContactRow): Contact {
   return {
     id: row.id,
@@ -87,6 +97,8 @@ function rowToContact(row: ContactRow): Contact {
     tags: JSON.parse(row.tags) as string[],
     dealStage: row.deal_stage,
     notes: row.notes ?? undefined,
+    clientStatus: parseClientStatus(row.client_status),
+    isVip: Boolean(row.is_vip),
     channelUserIds: row.channel_user_ids
       ? (JSON.parse(row.channel_user_ids) as Partial<Record<Channel, string>>)
       : undefined,
@@ -553,8 +565,14 @@ export function backfillMissingMaxExternalIds(
 function upsertContact(contact: Contact): void {
   getDb()
     .prepare(
-      `INSERT INTO contacts (id, name, phone, email, company, tags, deal_stage, notes, channel_user_ids)
-       VALUES (@id, @name, @phone, @email, @company, @tags, @dealStage, @notes, @channelUserIds)
+      `INSERT INTO contacts (
+         id, name, phone, email, company, tags, deal_stage, notes,
+         channel_user_ids, client_status, is_vip
+       )
+       VALUES (
+         @id, @name, @phone, @email, @company, @tags, @dealStage, @notes,
+         @channelUserIds, @clientStatus, @isVip
+       )
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          phone = excluded.phone,
@@ -563,7 +581,9 @@ function upsertContact(contact: Contact): void {
          tags = excluded.tags,
          deal_stage = excluded.deal_stage,
          notes = excluded.notes,
-         channel_user_ids = excluded.channel_user_ids`,
+         channel_user_ids = excluded.channel_user_ids,
+         client_status = excluded.client_status,
+         is_vip = excluded.is_vip`,
     )
     .run({
       id: contact.id,
@@ -577,6 +597,8 @@ function upsertContact(contact: Contact): void {
       channelUserIds: contact.channelUserIds
         ? JSON.stringify(contact.channelUserIds)
         : null,
+      clientStatus: contact.clientStatus ?? null,
+      isVip: contact.isVip ? 1 : 0,
     });
 }
 
@@ -1132,6 +1154,8 @@ export function updateContactDetails(
     notes?: string | null;
     tags?: string[];
     dealStage?: DealStage;
+    clientStatus?: ClientStatus | null;
+    isVip?: boolean;
   },
 ): Contact | null {
   const existing = getContact(id);
@@ -1166,6 +1190,11 @@ export function updateContactDetails(
           : existing.notes,
     tags: patch.tags ?? existing.tags,
     dealStage: patch.dealStage ?? existing.dealStage,
+    clientStatus:
+      patch.clientStatus === undefined
+        ? existing.clientStatus ?? null
+        : patch.clientStatus,
+    isVip: patch.isVip ?? existing.isVip ?? false,
   };
 
   upsertContact(next);
@@ -2471,6 +2500,72 @@ export function getStats() {
     totalConversations: listConversations().length,
     unassigned,
     byChannel,
+  };
+}
+
+/** Incoming dialogs analytics for a date range, split by messenger. */
+export function getDialogAnalytics(fromIso: string, toIsoExclusive: string): {
+  from: string;
+  to: string;
+  total: number;
+  byChannel: Array<{ channel: Channel; count: number }>;
+  byClientStatus: Array<{ status: ClientStatus | "none"; count: number }>;
+  vipCount: number;
+  daily: Array<{ date: string; count: number }>;
+} {
+  seedDemoDataIfEmpty();
+
+  const rows = getDb()
+    .prepare(
+      `SELECT c.id, c.channel, ct.client_status, ct.is_vip,
+              MIN(m.created_at) AS first_inbound_at
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id AND m.direction = 'in'
+       JOIN contacts ct ON ct.id = c.contact_id
+       GROUP BY c.id
+       HAVING first_inbound_at >= ? AND first_inbound_at < ?`,
+    )
+    .all(fromIso, toIsoExclusive) as Array<{
+    id: string;
+    channel: Channel;
+    client_status: string | null;
+    is_vip: number | null;
+    first_inbound_at: string;
+  }>;
+
+  const channelCounts = new Map<Channel, number>();
+  const statusCounts = new Map<ClientStatus | "none", number>();
+  const dailyCounts = new Map<string, number>();
+  let vipCount = 0;
+
+  for (const row of rows) {
+    channelCounts.set(row.channel, (channelCounts.get(row.channel) ?? 0) + 1);
+    const status = parseClientStatus(row.client_status) ?? "none";
+    statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+    if (row.is_vip) vipCount += 1;
+
+    const day = row.first_inbound_at.slice(0, 10);
+    dailyCounts.set(day, (dailyCounts.get(day) ?? 0) + 1);
+  }
+
+  return {
+    from: fromIso,
+    to: toIsoExclusive,
+    total: rows.length,
+    byChannel: ALL_CHANNELS.map((channel) => ({
+      channel,
+      count: channelCounts.get(channel) ?? 0,
+    })).filter((item) => item.count > 0),
+    byClientStatus: (["warm", "non_target", "booked", "none"] as const).map(
+      (status) => ({
+        status,
+        count: statusCounts.get(status) ?? 0,
+      }),
+    ),
+    vipCount,
+    daily: [...dailyCounts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count })),
   };
 }
 

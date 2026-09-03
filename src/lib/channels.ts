@@ -52,3 +52,18 @@ export const DEAL_STAGE_LABELS: Record<string, string> = {
   won: "Сделка закрыта",
   lost: "Отказ",
 };
+
+export const CLIENT_STATUS_LABELS: Record<
+  import("./types").ClientStatus,
+  string
+> = {
+  warm: "Теплый",
+  non_target: "Нецелевой",
+  booked: "Записался",
+};
+
+export const CLIENT_STATUSES: import("./types").ClientStatus[] = [
+  "warm",
+  "non_target",
+  "booked",
+];

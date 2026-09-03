@@ -200,6 +200,7 @@ export function ConversationList({
             {filtered.map((conv) => {
               const contactName = conv.contact?.name ?? "Неизвестный контакт";
               const isSelected = selectedId === conv.id;
+              const isVip = Boolean(conv.contact?.isVip);
 
               return (
                 <li key={conv.id} className="mb-0.5">
@@ -210,7 +211,9 @@ export function ConversationList({
                       "flex w-full gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-150",
                       "hover:bg-accent/60 active:scale-[0.995]",
                       isSelected && "bg-primary/8 ring-1 ring-primary/20",
-                      conv.awaitingReply && !isSelected && "bg-brand-light/10",
+                      conv.awaitingReply && !isSelected && !isVip && "bg-brand-light/10",
+                      isVip && !isSelected && "bg-pink-50 hover:bg-pink-100/80",
+                      isVip && isSelected && "bg-pink-100 ring-1 ring-pink-300",
                     )}
                   >
                     <div className="relative shrink-0">
@@ -225,11 +228,18 @@ export function ConversationList({
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cn(
-                            "truncate text-sm",
+                            "flex min-w-0 items-center gap-1.5 truncate text-sm",
                             conv.awaitingReply ? "font-semibold" : "font-medium",
                           )}
                         >
-                          {highlightQuery(contactName, searchQuery)}
+                          <span className="truncate">
+                            {highlightQuery(contactName, searchQuery)}
+                          </span>
+                          {isVip && (
+                            <span className="shrink-0 text-[11px] font-bold text-red-600">
+                              ВИП
+                            </span>
+                          )}
                         </span>
                         <span
                           className={cn(

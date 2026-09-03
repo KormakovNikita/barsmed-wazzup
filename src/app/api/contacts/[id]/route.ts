@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getContactById, updateContactDetails } from "@/lib/store";
-import type { DealStage } from "@/lib/types";
+import type { ClientStatus, DealStage } from "@/lib/types";
 
 export const runtime = "nodejs";
+
+const CLIENT_STATUSES = new Set<ClientStatus>([
+  "warm",
+  "non_target",
+  "booked",
+]);
 
 export async function GET(
   _request: Request,
@@ -30,11 +36,24 @@ export async function PATCH(
       notes?: string | null;
       tags?: string[];
       dealStage?: DealStage;
+      clientStatus?: ClientStatus | null;
+      isVip?: boolean;
     };
 
     if (body.name !== undefined && !body.name.trim()) {
       return NextResponse.json(
         { error: "Имя не может быть пустым" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      body.clientStatus !== undefined &&
+      body.clientStatus !== null &&
+      !CLIENT_STATUSES.has(body.clientStatus)
+    ) {
+      return NextResponse.json(
+        { error: "Некорректный статус клиента" },
         { status: 400 },
       );
     }

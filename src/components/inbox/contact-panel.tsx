@@ -22,8 +22,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { ContactAvatar } from "@/components/inbox/contact-avatar";
 import { ChannelLabel } from "@/components/inbox/channel-badge";
-import { DEAL_STAGE_LABELS } from "@/lib/channels";
-import type { Contact, ConversationDetail, Operator } from "@/lib/types";
+import { DEAL_STAGE_LABELS, CLIENT_STATUS_LABELS, CLIENT_STATUSES } from "@/lib/channels";
+import type { ClientStatus, Contact, ConversationDetail, Operator } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ContactPanelProps {
@@ -47,6 +47,8 @@ export function ContactPanel({
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [statusSaving, setStatusSaving] = useState(false);
 
   useEffect(() => {
     if (!conversation) return;
@@ -79,6 +81,28 @@ export function ContactPanel({
   const messengers = contact.channels?.length
     ? contact.channels
     : [conversation.channel];
+
+  async function patchContact(patch: {
+    clientStatus?: ClientStatus | null;
+    isVip?: boolean;
+  }) {
+    setStatusSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Не удалось сохранить");
+      onContactUpdated?.(data.contact as Contact);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка сохранения");
+    } finally {
+      setStatusSaving(false);
+    }
+  }
 
   async function handleSave() {
     if (!name.trim()) {
@@ -198,6 +222,9 @@ export function ContactPanel({
             ) : (
               <>
                 <h3 className="mt-4 font-semibold">{contact.name}</h3>
+                {contact.isVip && (
+                  <span className="mt-1 text-sm font-bold text-red-600">ВИП</span>
+                )}
                 <div className="mt-2">
                   <ChannelLabel channel={conversation.channel} />
                 </div>
@@ -214,6 +241,53 @@ export function ContactPanel({
                   Изменить имя
                 </Button>
               </>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Статус клиента
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {CLIENT_STATUSES.map((status) => {
+                const active = contact.clientStatus === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    disabled={statusSaving}
+                    onClick={() =>
+                      void patchContact({
+                        clientStatus: active ? null : status,
+                      })
+                    }
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                      active
+                        ? "border-primary bg-primary/10 font-medium text-primary"
+                        : "border-border/60 text-muted-foreground hover:bg-accent",
+                    )}
+                  >
+                    {CLIENT_STATUS_LABELS[status]}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={statusSaving}
+              onClick={() => void patchContact({ isVip: !contact.isVip })}
+              className={cn(
+                "mt-3 flex w-full items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold transition-colors",
+                contact.isVip
+                  ? "border-pink-300 bg-pink-50 text-red-600"
+                  : "border-border/60 text-muted-foreground hover:bg-accent",
+              )}
+            >
+              {contact.isVip ? "ВИП ✓" : "Отметить ВИП"}
+            </button>
+            {error && !editing && (
+              <p className="mt-2 text-sm text-destructive">{error}</p>
             )}
           </div>
 

@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS contacts (
   tags TEXT NOT NULL DEFAULT '[]',
   deal_stage TEXT NOT NULL,
   notes TEXT,
-  channel_user_ids TEXT
+  channel_user_ids TEXT,
+  client_status TEXT,
+  is_vip INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -186,6 +188,19 @@ function migrateSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_whatsapp_thread_aliases_canonical
       ON whatsapp_thread_aliases(canonical_thread_id);
   `);
+
+  const contactColumns = database
+    .prepare("PRAGMA table_info(contacts)")
+    .all() as { name: string }[];
+  const contactNames = new Set(contactColumns.map((column) => column.name));
+  if (!contactNames.has("client_status")) {
+    database.exec("ALTER TABLE contacts ADD COLUMN client_status TEXT");
+  }
+  if (!contactNames.has("is_vip")) {
+    database.exec(
+      "ALTER TABLE contacts ADD COLUMN is_vip INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 }
 
 export function isDatabaseEmpty(): boolean {

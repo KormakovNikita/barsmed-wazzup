@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   Inbox,
-  LayoutDashboard,
   Settings,
   Users,
 } from "lucide-react";
@@ -17,9 +17,9 @@ import type { Channel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Дашборд", href: "#", disabled: true },
-  { icon: Inbox, label: "Входящие", href: "/inbox", active: false },
+  { icon: Inbox, label: "Входящие", href: "/inbox", disabled: false },
   { icon: Users, label: "Контакты", href: "/contacts", disabled: false },
+  { icon: BarChart3, label: "Аналитика", href: "/analytics", disabled: false },
   { icon: Settings, label: "Интеграции", href: "/settings/integrations", disabled: false },
 ];
 

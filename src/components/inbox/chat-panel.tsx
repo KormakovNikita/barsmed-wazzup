@@ -562,7 +562,12 @@ export function ChatPanel({
         <div className="flex min-w-0 items-center gap-3">
           <ContactAvatar name={conversation.contact.name} size="sm" />
           <div className="min-w-0">
-            <h2 className="truncate font-semibold">{conversation.contact.name}</h2>
+            <h2 className="flex min-w-0 items-center gap-2 truncate font-semibold">
+              <span className="truncate">{conversation.contact.name}</span>
+              {conversation.contact.isVip && (
+                <span className="shrink-0 text-sm font-bold text-red-600">ВИП</span>
+              )}
+            </h2>
             <ChannelLabel channel={conversation.channel} />
           </div>
         </div>

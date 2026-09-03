@@ -27,7 +27,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { CLIENT_STATUS_LABELS } from "@/lib/channels";
 import type { Contact } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export function ContactsApp() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -120,6 +122,9 @@ export function ContactsApp() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" render={<Link href="/inbox" />}>
             Входящие
+          </Button>
+          <Button variant="outline" size="sm" render={<Link href="/analytics" />}>
+            Аналитика
           </Button>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger
@@ -244,12 +249,27 @@ export function ContactsApp() {
               {contacts.map((contact) => (
                 <li
                   key={contact.id}
-                  className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className={cn(
+                    "flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between",
+                    contact.isVip && "bg-pink-50",
+                  )}
                 >
                   <div className="flex min-w-0 items-start gap-3">
                     <ContactAvatar name={contact.name} size="md" />
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{contact.name}</p>
+                      <p className="flex min-w-0 items-center gap-1.5 truncate font-medium">
+                        <span className="truncate">{contact.name}</span>
+                        {contact.isVip && (
+                          <span className="shrink-0 text-[11px] font-bold text-red-600">
+                            ВИП
+                          </span>
+                        )}
+                        {contact.clientStatus && (
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {CLIENT_STATUS_LABELS[contact.clientStatus]}
+                          </span>
+                        )}
+                      </p>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         {contact.phone && (
                           <span className="inline-flex items-center gap-1">

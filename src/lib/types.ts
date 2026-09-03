@@ -19,6 +19,9 @@ export type DealStage =
   | "won"
   | "lost";
 
+/** Lead quality status set by operators */
+export type ClientStatus = "warm" | "non_target" | "booked";
+
 export interface Operator {
   id: string;
   name: string;
@@ -35,6 +38,10 @@ export interface Contact {
   tags: string[];
   dealStage: DealStage;
   notes?: string;
+  /** Operator lead status: Теплый / Нецелевой / Записался */
+  clientStatus?: ClientStatus | null;
+  /** VIP flag — pink dialog highlight */
+  isVip?: boolean;
   /** External user ID per channel, e.g. telegram chat id */
   channelUserIds?: Partial<Record<Channel, string>>;
   /** Messengers where this contact has dialogs or linked IDs */
