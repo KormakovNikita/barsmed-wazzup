@@ -37,6 +37,8 @@ export interface Contact {
   notes?: string;
   /** External user ID per channel, e.g. telegram chat id */
   channelUserIds?: Partial<Record<Channel, string>>;
+  /** Messengers where this contact has dialogs or linked IDs */
+  channels?: Channel[];
 }
 
 export type MessageMediaType =

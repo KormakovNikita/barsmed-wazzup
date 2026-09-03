@@ -1,5 +1,5 @@
 import { getDb, isDatabaseEmpty } from "@/lib/db";
-import { ALL_CHANNELS } from "@/lib/channels";
+import { ALL_CHANNELS, CHANNEL_CONFIG } from "@/lib/channels";
 import { getAssignmentStrategy, pickOperatorForAssignment } from "@/lib/assignment";
 import { dispatchOutboundMessage, deleteChannelMessage, editChannelMessage } from "@/lib/integrations";
 import { getMaxIncomingMode, getPublicAppBaseUrl } from "@/lib/integrations/wazzup-max";
@@ -1034,7 +1034,161 @@ export function seedDemoDataIfEmpty(): void {
 }
 
 export function getContactForConversation(contactId: string): Contact | undefined {
-  return getContact(contactId);
+  const contact = getContact(contactId);
+  if (!contact) return undefined;
+  return {
+    ...contact,
+    channels: getContactChannels(contactId, contact),
+  };
+}
+
+function getContactChannels(
+  contactId: string,
+  contact?: Contact,
+): Channel[] {
+  const fromConversations = getDb()
+    .prepare(
+      "SELECT DISTINCT channel FROM conversations WHERE contact_id = ?",
+    )
+    .all(contactId) as Array<{ channel: Channel }>;
+
+  const channels = new Set<Channel>(
+    fromConversations.map((row) => row.channel),
+  );
+
+  const source = contact ?? getContact(contactId);
+  if (source?.channelUserIds) {
+    for (const channel of Object.keys(source.channelUserIds) as Channel[]) {
+      if (source.channelUserIds[channel]) channels.add(channel);
+    }
+  }
+
+  return ALL_CHANNELS.filter((channel) => channels.has(channel));
+}
+
+export function listContacts(query?: string): Contact[] {
+  seedDemoDataIfEmpty();
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM contacts
+       ORDER BY unicode_lower(name) ASC, id ASC`,
+    )
+    .all() as ContactRow[];
+
+  const contacts = rows.map((row) => {
+    const contact = rowToContact(row);
+    return {
+      ...contact,
+      channels: getContactChannels(contact.id, contact),
+    };
+  });
+
+  const trimmed = query?.trim();
+  if (!trimmed) return contacts;
+
+  const needle = trimmed.toLowerCase();
+  return contacts.filter((contact) => {
+    const haystack = [
+      contact.name,
+      contact.phone,
+      contact.email,
+      contact.company,
+      contact.notes,
+      ...(contact.tags ?? []),
+      ...(contact.channels ?? []).map((channel) => CHANNEL_CONFIG[channel].label),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+export function getContactById(id: string): Contact | null {
+  const contact = getContact(id);
+  if (!contact) return null;
+  return {
+    ...contact,
+    channels: getContactChannels(id, contact),
+  };
+}
+
+export function updateContactDetails(
+  id: string,
+  patch: {
+    name?: string;
+    phone?: string | null;
+    email?: string | null;
+    company?: string | null;
+    notes?: string | null;
+    tags?: string[];
+    dealStage?: DealStage;
+  },
+): Contact | null {
+  const existing = getContact(id);
+  if (!existing) return null;
+
+  const next: Contact = {
+    ...existing,
+    name: patch.name?.trim() || existing.name,
+    phone:
+      patch.phone === null
+        ? undefined
+        : patch.phone !== undefined
+          ? patch.phone.trim() || undefined
+          : existing.phone,
+    email:
+      patch.email === null
+        ? undefined
+        : patch.email !== undefined
+          ? patch.email.trim() || undefined
+          : existing.email,
+    company:
+      patch.company === null
+        ? undefined
+        : patch.company !== undefined
+          ? patch.company.trim() || undefined
+          : existing.company,
+    notes:
+      patch.notes === null
+        ? undefined
+        : patch.notes !== undefined
+          ? patch.notes.trim() || undefined
+          : existing.notes,
+    tags: patch.tags ?? existing.tags,
+    dealStage: patch.dealStage ?? existing.dealStage,
+  };
+
+  upsertContact(next);
+  return getContactById(id);
+}
+
+export function createContact(input: {
+  name: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  notes?: string;
+  tags?: string[];
+}): Contact {
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("Укажите имя контакта");
+  }
+
+  const contact: Contact = {
+    id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    phone: input.phone?.trim() || undefined,
+    email: input.email?.trim() || undefined,
+    company: input.company?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
+    tags: input.tags?.length ? input.tags : ["Ручной"],
+    dealStage: "new",
+  };
+
+  upsertContact(contact);
+  return getContactById(contact.id)!;
 }
 
 export function listOperators(): Operator[] {

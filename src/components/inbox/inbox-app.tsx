@@ -578,6 +578,20 @@ export function InboxApp() {
             conversation={activeConversation}
             operators={operators}
             onAssign={handleAssign}
+            onContactUpdated={(contact) => {
+              setConversationDetail((prev) =>
+                prev && prev.contact.id === contact.id
+                  ? { ...prev, contact: { ...prev.contact, ...contact } }
+                  : prev,
+              );
+              setConversations((prev) =>
+                prev.map((item) =>
+                  item.contactId === contact.id
+                    ? { ...item, contact: { ...item.contact, ...contact } }
+                    : item,
+                ),
+              );
+            }}
           />
         </div>
       </div>

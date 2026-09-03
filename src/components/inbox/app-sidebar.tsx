@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Inbox,
   LayoutDashboard,
@@ -17,8 +18,8 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Дашборд", href: "#", disabled: true },
-  { icon: Inbox, label: "Входящие", href: "/inbox", active: true },
-  { icon: Users, label: "Контакты", href: "#", disabled: true },
+  { icon: Inbox, label: "Входящие", href: "/inbox", active: false },
+  { icon: Users, label: "Контакты", href: "/contacts", disabled: false },
   { icon: Settings, label: "Интеграции", href: "/settings/integrations", disabled: false },
 ];
 
@@ -57,6 +58,8 @@ export function AppSidebar({
   totalUnread,
   integrationStatus,
 }: AppSidebarProps) {
+  const pathname = usePathname();
+
   return (
     <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar md:flex">
       <div className="px-4 py-5">
@@ -67,13 +70,18 @@ export function AppSidebar({
       <Separator className="opacity-60" />
 
       <nav className="flex-1 space-y-1 p-3">
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.map((item) => {
+          const isActive =
+            !item.disabled &&
+            item.href !== "#" &&
+            (pathname === item.href || pathname.startsWith(`${item.href}/`));
+          return (
           <Button
             key={item.label}
-            variant={item.active ? "secondary" : "ghost"}
+            variant={isActive ? "secondary" : "ghost"}
             className={cn(
               "h-10 w-full justify-start gap-2.5 rounded-xl",
-              item.active && "bg-primary/10 font-medium text-primary shadow-none",
+              isActive && "bg-primary/10 font-medium text-primary shadow-none",
             )}
             disabled={item.disabled}
             render={!item.disabled && item.href !== "#" ? <Link href={item.href} /> : undefined}
@@ -86,7 +94,8 @@ export function AppSidebar({
               </Badge>
             )}
           </Button>
-        ))}
+          );
+        })}
       </nav>
 
       <Separator className="opacity-60" />
