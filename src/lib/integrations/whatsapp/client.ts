@@ -1,4 +1,3 @@
-import type { Agent as HttpsAgent } from "node:https";
 import type { Boom } from "@hapi/boom";
 import makeWASocket, {
   DisconnectReason,
@@ -21,7 +20,10 @@ import {
   clearWhatsAppSession,
 } from "@/lib/integrations/whatsapp/session-path";
 import { attachWhatsAppMessageHandler } from "@/lib/integrations/whatsapp/message-handler";
-import { resolveLidToPhone, resolvePhoneToLid } from "@/lib/integrations/whatsapp/lid";
+import {
+  resolveLidToPhone,
+  resolvePhoneToLid,
+} from "@/lib/integrations/whatsapp/lid";
 import { mergeDuplicateWhatsAppConversations } from "@/lib/store";
 
 let socket: WASocket | null = null;
@@ -32,6 +34,8 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let socketConnected = false;
 let sessionLoggedOut = false;
 let qrAuthInProgress = false;
+let reconnectAttempt = 0;
+let mergeDoneForSession = false;
 const handlerAttached = new WeakSet<object>();
 
 const silentLogger = pino({ level: "silent" });
@@ -81,6 +85,15 @@ function shouldReconnectAfterClose(statusCode: number | undefined): boolean {
   );
 }
 
+function endSocketQuietly(sock: WASocket | null): void {
+  if (!sock) return;
+  try {
+    sock.end(undefined);
+  } catch {
+    // ignore
+  }
+}
+
 async function createSocket(
   authFolder: string,
   hooks?: {
@@ -115,28 +128,36 @@ async function createSocket(
       lastBootError = null;
       sessionLoggedOut = false;
       socketConnected = true;
+      reconnectAttempt = 0;
       ensureHandler(sock);
       console.info("[whatsapp] connection open");
-      void mergeDuplicateWhatsAppConversations(
-        (lid) => resolveLidToPhone(sock, lid),
-        (phone) => resolvePhoneToLid(sock, phone),
-      )
-        .then((merged) => {
-          if (merged > 0) {
-            console.info(`[whatsapp] merged ${merged} duplicate LID conversations`);
-          }
-        })
-        .catch((error) => {
-          console.warn("[whatsapp] LID merge failed:", error);
-        });
+      if (!hooks && !mergeDoneForSession) {
+        mergeDoneForSession = true;
+        void mergeDuplicateWhatsAppConversations(
+          (lid) => resolveLidToPhone(sock, lid),
+          (phone) => resolvePhoneToLid(sock, phone),
+        )
+          .then((merged) => {
+            if (merged > 0) {
+              console.info(
+                `[whatsapp] synced ${merged} WhatsApp thread aliases`,
+              );
+            }
+          })
+          .catch((error) => {
+            console.warn("[whatsapp] LID merge failed:", error);
+          });
+      }
       hooks?.onConnectionOpen?.();
     }
 
     if (connection === "close") {
+      const wasCurrent = socket === sock;
       socketConnected = false;
       const statusCode = (lastDisconnect?.error as Boom | undefined)?.output
         ?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
+      const conflict = statusCode === DisconnectReason.connectionReplaced;
       sessionLoggedOut = loggedOut;
       const message =
         lastDisconnect?.error instanceof Error
@@ -145,6 +166,9 @@ async function createSocket(
 
       if (loggedOut) {
         lastBootError = "Сессия WhatsApp завершена. Войдите по QR снова.";
+      } else if (conflict) {
+        lastBootError =
+          "Сессия WhatsApp занята другим подключением. Переподключение…";
       } else if (!getWhatsAppProxyUrl()) {
         lastBootError =
           "WhatsApp недоступен без WHATSAPP_PROXY (SOCKS5).";
@@ -155,9 +179,20 @@ async function createSocket(
       console.warn("[whatsapp] connection closed:", lastBootError ?? message);
       hooks?.onConnectionClose?.(lastBootError ?? message);
 
-      if (!hooks && shouldReconnectAfterClose(statusCode) && isWhatsAppEnabled()) {
-        const conflict = statusCode === DisconnectReason.connectionReplaced;
-        scheduleReconnect(conflict ? 15000 : 5000);
+      if (wasCurrent) {
+        socket = null;
+        listenerStarted = false;
+        mergeDoneForSession = false;
+      }
+
+      if (!hooks && wasCurrent && shouldReconnectAfterClose(statusCode) && isWhatsAppEnabled()) {
+        // Conflict = another WA Web session replaced us. Back off hard so we
+        // do not open a second socket while WhatsApp is still settling.
+        const delay = conflict
+          ? Math.min(60_000, 20_000 + reconnectAttempt * 15_000)
+          : Math.min(30_000, 5_000 * Math.max(1, reconnectAttempt + 1));
+        reconnectAttempt += 1;
+        scheduleReconnect(delay);
       } else if (loggedOut) {
         listenerStarted = false;
         socket = null;
@@ -173,18 +208,13 @@ async function createSocket(
 }
 
 function scheduleReconnect(delayMs = 5000): void {
-  if (reconnectTimer) return;
+  if (reconnectTimer || connecting || qrAuthInProgress) return;
+  console.info(`[whatsapp] reconnect scheduled in ${delayMs}ms`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     listenerStarted = false;
     socketConnected = false;
-    if (socket) {
-      try {
-        socket.end(undefined);
-      } catch {
-        // ignore
-      }
-    }
+    endSocketQuietly(socket);
     socket = null;
     void startWhatsAppListener();
   }, delayMs);
@@ -192,6 +222,10 @@ function scheduleReconnect(delayMs = 5000): void {
 
 export function isWhatsAppSocketLive(): boolean {
   return Boolean(socket?.user && socketConnected && !sessionLoggedOut);
+}
+
+export function isWhatsAppReconnecting(): boolean {
+  return Boolean(reconnectTimer || connecting);
 }
 
 export async function getWhatsAppSocket(): Promise<WASocket | null> {
@@ -204,7 +238,15 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
 
   if (sessionLoggedOut) {
     lastBootError =
-      lastBootError ?? "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках.";
+      lastBootError ??
+      "Сессия WhatsApp завершена. Отсканируйте QR заново в настройках.";
+    return null;
+  }
+
+  // Wait for scheduled reconnect instead of opening a competing socket.
+  if (reconnectTimer) {
+    lastBootError =
+      lastBootError ?? "WhatsApp переподключается. Повторите через несколько секунд.";
     return null;
   }
 
@@ -224,28 +266,27 @@ export async function getWhatsAppSocket(): Promise<WASocket | null> {
     }
 
     try {
-      if (socket) {
-        try {
-          socket.end(undefined);
-        } catch {
-          // ignore
-        }
-        socket = null;
-      }
+      endSocketQuietly(socket);
+      socket = null;
+      socketConnected = false;
 
       const instance = await createSocket(getWhatsAppSessionDir());
+      socket = instance;
       await waitForConnectionOpen(instance);
-      if (!socketConnected) {
+      if (!socketConnected || socket !== instance) {
         lastBootError = lastBootError ?? "WhatsApp не подключён к серверу";
+        endSocketQuietly(instance);
+        if (socket === instance) socket = null;
         return null;
       }
       ensureHandler(instance);
-      socket = instance;
+      listenerStarted = true;
       return instance;
     } catch (error) {
       lastBootError =
         error instanceof Error ? error.message : "Ошибка подключения WhatsApp";
       console.error("[whatsapp] connect failed:", error);
+      endSocketQuietly(socket);
       socket = null;
       return null;
     }
@@ -262,10 +303,15 @@ export async function startWhatsAppListener(): Promise<void> {
   if (!isWhatsAppEnabled()) return;
   if (qrAuthInProgress) return;
   if (listenerStarted && socketConnected) return;
+  if (reconnectTimer) return;
+  if (connecting) {
+    await connecting;
+    return;
+  }
 
   try {
     const active = await getWhatsAppSocket();
-    if (!active?.user) {
+    if (!active?.user || !socketConnected) {
       listenerStarted = false;
       console.warn("[whatsapp] listener not started:", lastBootError);
       return;
@@ -286,17 +332,12 @@ export async function restartWhatsAppListener(): Promise<void> {
 export async function resetWhatsAppClient(): Promise<void> {
   listenerStarted = false;
   socketConnected = false;
+  mergeDoneForSession = false;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-  if (socket) {
-    try {
-      socket.end(undefined);
-    } catch {
-      // ignore
-    }
-  }
+  endSocketQuietly(socket);
   socket = null;
   connecting = null;
 }
@@ -310,6 +351,7 @@ export async function createWhatsAppQrSocket(hooks: {
   clearWhatsAppSession();
   sessionLoggedOut = false;
   lastBootError = null;
+  reconnectAttempt = 0;
   qrAuthInProgress = true;
 
   if (!getWhatsAppProxyUrl()) {
@@ -407,7 +449,13 @@ export async function getWhatsAppStatus(): Promise<{
     };
   }
 
-  if (configured && !listenerStarted && !connecting && !qrAuthInProgress) {
+  if (
+    configured &&
+    !listenerStarted &&
+    !connecting &&
+    !qrAuthInProgress &&
+    !reconnectTimer
+  ) {
     void startWhatsAppListener();
   }
 
@@ -421,7 +469,7 @@ export async function getWhatsAppStatus(): Promise<{
     profile: null,
     error:
       lastBootError ??
-      (connecting || listenerStarted
+      (connecting || reconnectTimer || listenerStarted
         ? "Подключение WhatsApp…"
         : configured
           ? "Сессия есть, но подключение не удалось. Проверьте WHATSAPP_PROXY."

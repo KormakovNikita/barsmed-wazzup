@@ -286,30 +286,35 @@ export function InboxApp() {
     setSendError(null);
 
     let res: Response;
-    if (file) {
-      const form = new FormData();
-      form.append("content", content);
-      if (conversationDetail?.assignedTo) {
-        form.append("operatorId", conversationDetail.assignedTo);
+    try {
+      if (file) {
+        const form = new FormData();
+        form.append("content", content);
+        if (conversationDetail?.assignedTo) {
+          form.append("operatorId", conversationDetail.assignedTo);
+        }
+        if (replyToMessageId) {
+          form.append("replyToMessageId", replyToMessageId);
+        }
+        form.append("file", file);
+        res = await fetch(`/api/conversations/${selectedId}/messages`, {
+          method: "POST",
+          body: form,
+        });
+      } else {
+        res = await fetch(`/api/conversations/${selectedId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content,
+            operatorId: conversationDetail?.assignedTo,
+            replyToMessageId,
+          }),
+        });
       }
-      if (replyToMessageId) {
-        form.append("replyToMessageId", replyToMessageId);
-      }
-      form.append("file", file);
-      res = await fetch(`/api/conversations/${selectedId}/messages`, {
-        method: "POST",
-        body: form,
-      });
-    } else {
-      res = await fetch(`/api/conversations/${selectedId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          operatorId: conversationDetail?.assignedTo,
-          replyToMessageId,
-        }),
-      });
+    } catch {
+      setSendError("Не удалось отправить сообщение. Проверьте соединение.");
+      throw new Error("network");
     }
 
     const data = await res.json();
@@ -332,7 +337,11 @@ export function InboxApp() {
       });
     }
 
-    await Promise.all([
+    if (!res.ok || data.error) {
+      throw new Error(data.error ?? "send failed");
+    }
+
+    void Promise.all([
       fetchConversationDetail(selectedId, { silent: true }),
       fetchConversations({ silent: true }),
       fetchStats(),

@@ -2,6 +2,7 @@ import type { AnyMessageContent } from "@whiskeysockets/baileys/lib/Types/Messag
 import type { OutboundAttachmentPayload, OutboundMessagePayload } from "@/lib/types";
 import {
   getWhatsAppSocket,
+  isWhatsAppReconnecting,
   isWhatsAppSocketLive,
 } from "@/lib/integrations/whatsapp/client";
 import { resolveOutboundWhatsAppJid } from "@/lib/integrations/whatsapp/lid";
@@ -61,10 +62,12 @@ export async function sendWhatsAppMessage(
 ): Promise<{ ok: boolean; externalId?: string; error?: string }> {
   const sock = await getWhatsAppSocket();
   if (!sock?.user || !isWhatsAppSocketLive()) {
+    const reconnecting = isWhatsAppReconnecting();
     return {
       ok: false,
-      error:
-        "WhatsApp не подключён. Отсканируйте QR в настройках и проверьте WHATSAPP_PROXY.",
+      error: reconnecting
+        ? "WhatsApp переподключается. Подождите несколько секунд и отправьте снова."
+        : "WhatsApp не подключён. Отсканируйте QR в настройках и проверьте WHATSAPP_PROXY.",
     };
   }
 

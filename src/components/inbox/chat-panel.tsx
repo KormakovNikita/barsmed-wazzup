@@ -367,17 +367,19 @@ export function ChatPanel({
 
   async function handleSend() {
     if ((!draft.trim() && !selectedFile) || sending) return;
+    const contentToSend = draft;
+    const fileToSend = selectedFile ?? undefined;
+    const replyId = replyToMessage?.id;
     setSending(true);
+    setDraft("");
+    setSelectedFile(null);
+    setReplyToMessage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     try {
-      await onSendMessage(
-        draft,
-        selectedFile ?? undefined,
-        replyToMessage?.id,
-      );
-      setDraft("");
-      setSelectedFile(null);
-      setReplyToMessage(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      await onSendMessage(contentToSend, fileToSend, replyId);
+    } catch {
+      setDraft(contentToSend);
+      if (fileToSend) setSelectedFile(fileToSend);
     } finally {
       setSending(false);
     }
