@@ -283,6 +283,25 @@ function rowToMessage(row: MessageRow, attachments?: MessageAttachment[]): Messa
 
 function enrichMessagesWithReplies(messages: Message[]): Message[] {
   const byId = new Map(messages.map((message) => [message.id, message]));
+  const missingIds = [
+    ...new Set(
+      messages
+        .map((message) => message.replyToMessageId)
+        .filter((id): id is string => Boolean(id && !byId.has(id))),
+    ),
+  ];
+
+  if (missingIds.length > 0) {
+    const placeholders = missingIds.map(() => "?").join(", ");
+    const rows = getDb()
+      .prepare(`SELECT * FROM messages WHERE id IN (${placeholders})`)
+      .all(...missingIds) as MessageRow[];
+    const attachmentMap = loadAttachmentsForMessages(rows.map((row) => row.id));
+    for (const row of rows) {
+      byId.set(row.id, rowToMessage(row, attachmentMap.get(row.id)));
+    }
+  }
+
   return messages.map((message) => {
     if (!message.replyToMessageId) return message;
     const parent = byId.get(message.replyToMessageId);
@@ -302,21 +321,42 @@ function findMessageIdByChannelMessageId(
   conversationId: string,
   channelMessageId: string,
 ): string | undefined {
+  const raw = channelMessageId.trim();
+  if (!raw) return undefined;
+
+  const candidates = [
+    raw,
+    `wa-${raw}`,
+    `wazzup-wa-${raw}`,
+    `wazzup-max-${raw}`,
+    `wazzup-${raw}`,
+    `max-${raw}`,
+    `max-personal-${raw}`,
+    `tg-user-${raw}-%`,
+    `tg-bot-%${raw}`,
+    `vk-%-${raw}`,
+  ];
+
   const row = getDb()
     .prepare(
       `SELECT id FROM messages
        WHERE conversation_id = ?
-         AND (external_id = ? OR external_id LIKE ? OR external_id LIKE ? OR external_id = ?)
+         AND (
+           external_id = ?
+           OR external_id = ?
+           OR external_id = ?
+           OR external_id = ?
+           OR external_id = ?
+           OR external_id = ?
+           OR external_id = ?
+           OR external_id LIKE ?
+           OR external_id LIKE ?
+           OR external_id LIKE ?
+         )
        ORDER BY created_at DESC
        LIMIT 1`,
     )
-    .get(
-      conversationId,
-      channelMessageId,
-      `tg-user-${channelMessageId}-%`,
-      `tg-bot-%${channelMessageId}`,
-      `max-${channelMessageId}`,
-    ) as { id: string } | undefined;
+    .get(conversationId, ...candidates) as { id: string } | undefined;
   return row?.id;
 }
 
@@ -478,8 +518,16 @@ export function extractChannelMessageId(externalId: string): string | undefined 
   if (externalId.startsWith("mid.")) return externalId;
   const maxMatch = externalId.match(/^max-(mid\.[a-zA-Z0-9._-]+)$/);
   if (maxMatch) return maxMatch[1];
-  const wazzupMatch = externalId.match(/^wazzup-max-(.+)$/i);
-  if (wazzupMatch) return wazzupMatch[1];
+  const wazzupMaxMatch = externalId.match(/^wazzup-max-(.+)$/i);
+  if (wazzupMaxMatch) return wazzupMaxMatch[1];
+  const wazzupWaMatch = externalId.match(/^wazzup-wa-(.+)$/i);
+  if (wazzupWaMatch) return wazzupWaMatch[1];
+  const wazzupTgMatch = externalId.match(/^wazzup-(.+)$/i);
+  if (wazzupTgMatch) return wazzupTgMatch[1];
+  const waMatch = externalId.match(/^wa-(.+)$/i);
+  if (waMatch) return waMatch[1];
+  const maxPersonalMatch = externalId.match(/^max-personal-(.+)$/i);
+  if (maxPersonalMatch) return maxPersonalMatch[1];
   if (
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       externalId,

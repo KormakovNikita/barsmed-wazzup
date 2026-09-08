@@ -159,6 +159,10 @@ interface TelegramBotMessage {
   text?: string;
   date: number;
   edit_date?: number;
+  reply_to_message?: {
+    message_id: number;
+    text?: string;
+  };
 }
 
 export function parseTelegramBotUpdate(update: TelegramUpdate) {
@@ -178,6 +182,9 @@ export function parseTelegramBotUpdate(update: TelegramUpdate) {
     content: message.text,
     senderName: name || message.from.username || "Telegram user",
     senderUsername: message.from.username,
+    replyToChannelMessageId: message.reply_to_message?.message_id
+      ? String(message.reply_to_message.message_id)
+      : undefined,
   };
 }
 

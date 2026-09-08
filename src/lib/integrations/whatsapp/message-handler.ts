@@ -125,12 +125,19 @@ function extractText(message: WAMessage): string {
 }
 
 function getReplyToId(message: WAMessage): string | undefined {
+  const content = message.message;
+  if (!content) return undefined;
+
   const ctx =
-    message.message?.extendedTextMessage?.contextInfo ??
-    message.message?.imageMessage?.contextInfo ??
-    message.message?.videoMessage?.contextInfo ??
-    message.message?.documentMessage?.contextInfo ??
-    message.message?.audioMessage?.contextInfo;
+    content.extendedTextMessage?.contextInfo ??
+    content.imageMessage?.contextInfo ??
+    content.videoMessage?.contextInfo ??
+    content.documentMessage?.contextInfo ??
+    content.audioMessage?.contextInfo ??
+    content.stickerMessage?.contextInfo ??
+    content.buttonsResponseMessage?.contextInfo ??
+    content.templateButtonReplyMessage?.contextInfo ??
+    content.listResponseMessage?.contextInfo;
 
   if (ctx?.stanzaId) return ctx.stanzaId;
   return undefined;

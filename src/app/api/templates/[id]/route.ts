@@ -3,6 +3,7 @@ import {
   addTemplateAttachment,
   deleteMessageTemplate,
   getMessageTemplate,
+  moveMessageTemplate,
   removeTemplateAttachment,
   updateMessageTemplate,
 } from "@/lib/message-templates";
@@ -13,6 +14,7 @@ async function parseTemplateUpdateRequest(request: Request): Promise<{
   body: string;
   files: File[];
   removeAttachmentIds: string[];
+  move?: "up" | "down";
 }> {
   const contentType = request.headers.get("content-type") ?? "";
 
@@ -39,6 +41,7 @@ async function parseTemplateUpdateRequest(request: Request): Promise<{
     body?: string;
     removeAttachmentId?: string;
     removeAttachmentIds?: string[];
+    move?: "up" | "down";
   };
   return {
     title: body.title ?? "",
@@ -46,6 +49,7 @@ async function parseTemplateUpdateRequest(request: Request): Promise<{
     files: [],
     removeAttachmentIds: body.removeAttachmentIds ??
       (body.removeAttachmentId ? [body.removeAttachmentId] : []),
+    move: body.move === "up" || body.move === "down" ? body.move : undefined,
   };
 }
 
@@ -69,6 +73,14 @@ export async function PATCH(
 
   try {
     const input = await parseTemplateUpdateRequest(request);
+
+    if (input.move) {
+      const templates = moveMessageTemplate(id, input.move);
+      if (!templates) {
+        return NextResponse.json({ error: "Шаблон не найден" }, { status: 404 });
+      }
+      return NextResponse.json({ templates });
+    }
 
     if (input.removeAttachmentIds.length > 0) {
       for (const attachmentId of input.removeAttachmentIds) {

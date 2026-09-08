@@ -31,6 +31,7 @@ interface TemplateRow {
   body: string;
   created_at: string;
   updated_at: string;
+  sort_order: number;
 }
 
 interface TemplateAttachmentRow {
@@ -100,10 +101,11 @@ function ensureTemplatesTable(): void {
       title TEXT NOT NULL,
       body TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
     );
-    CREATE INDEX IF NOT EXISTS idx_message_templates_updated
-      ON message_templates(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_message_templates_sort
+      ON message_templates(sort_order ASC, title ASC);
 
     CREATE TABLE IF NOT EXISTS message_template_attachments (
       id TEXT PRIMARY KEY,
@@ -118,6 +120,32 @@ function ensureTemplatesTable(): void {
     CREATE INDEX IF NOT EXISTS idx_template_attachments_template
       ON message_template_attachments(template_id);
   `);
+
+  const columns = getDb()
+    .prepare("PRAGMA table_info(message_templates)")
+    .all() as { name: string }[];
+  if (!columns.some((column) => column.name === "sort_order")) {
+    getDb().exec(
+      "ALTER TABLE message_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+    );
+    getDb().exec(`
+      UPDATE message_templates
+      SET sort_order = (
+        SELECT COUNT(*)
+        FROM message_templates AS older
+        WHERE older.updated_at > message_templates.updated_at
+           OR (older.updated_at = message_templates.updated_at AND older.title < message_templates.title)
+           OR (older.updated_at = message_templates.updated_at AND older.title = message_templates.title AND older.id < message_templates.id)
+      )
+    `);
+  }
+}
+
+function nextTemplateSortOrder(): number {
+  const row = getDb()
+    .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM message_templates")
+    .get() as { next_order: number };
+  return row.next_order;
 }
 
 function loadAttachmentsForTemplates(
@@ -152,26 +180,27 @@ function seedDefaultTemplatesIfEmpty(): void {
 
   const now = new Date().toISOString();
   const insert = getDb().prepare(
-    `INSERT INTO message_templates (id, title, body, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO message_templates (id, title, body, created_at, updated_at, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
 
-  for (const template of DEFAULT_TEMPLATES) {
+  DEFAULT_TEMPLATES.forEach((template, index) => {
     insert.run(
       `tpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       template.title,
       template.body,
       now,
       now,
+      index,
     );
-  }
+  });
 }
 
 export function listMessageTemplates(): MessageTemplate[] {
   seedDefaultTemplatesIfEmpty();
   const rows = getDb()
     .prepare(
-      "SELECT * FROM message_templates ORDER BY updated_at DESC, title ASC",
+      "SELECT * FROM message_templates ORDER BY sort_order ASC, title ASC",
     )
     .all() as TemplateRow[];
   const attachments = loadAttachmentsForTemplates(rows.map((row) => row.id));
@@ -302,12 +331,13 @@ export function createMessageTemplate(input: {
 
   const now = new Date().toISOString();
   const id = `tpl-${Date.now()}`;
+  const sortOrder = nextTemplateSortOrder();
   getDb()
     .prepare(
-      `INSERT INTO message_templates (id, title, body, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO message_templates (id, title, body, created_at, updated_at, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, title, body, now, now);
+    .run(id, title, body, now, now, sortOrder);
 
   return {
     id,
@@ -365,4 +395,40 @@ export function deleteMessageTemplate(id: string): boolean {
     .prepare("DELETE FROM message_templates WHERE id = ?")
     .run(id);
   return result.changes > 0;
+}
+
+export function moveMessageTemplate(
+  id: string,
+  direction: "up" | "down",
+): MessageTemplate[] | null {
+  seedDefaultTemplatesIfEmpty();
+  const rows = getDb()
+    .prepare(
+      "SELECT id FROM message_templates ORDER BY sort_order ASC, title ASC, id ASC",
+    )
+    .all() as Array<{ id: string }>;
+
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (swapIndex < 0 || swapIndex >= rows.length) {
+    return listMessageTemplates();
+  }
+
+  const ordered = [...rows];
+  const [moved] = ordered.splice(index, 1);
+  ordered.splice(swapIndex, 0, moved);
+
+  const tx = getDb().transaction(() => {
+    const update = getDb().prepare(
+      "UPDATE message_templates SET sort_order = ? WHERE id = ?",
+    );
+    ordered.forEach((row, order) => {
+      update.run(order, row.id);
+    });
+  });
+  tx();
+
+  return listMessageTemplates();
 }

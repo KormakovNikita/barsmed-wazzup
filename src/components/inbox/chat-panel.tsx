@@ -56,12 +56,17 @@ interface ChatPanelProps {
 function ReplyQuote({
   replyTo,
   isOut,
+  contactName,
   onJump,
 }: {
   replyTo: NonNullable<Message["replyTo"]>;
   isOut: boolean;
+  contactName?: string;
   onJump?: (messageId: string) => void;
 }) {
+  const author =
+    replyTo.direction === "out" ? "Вы" : contactName?.trim() || "Клиент";
+
   return (
     <button
       type="button"
@@ -70,15 +75,22 @@ function ReplyQuote({
         onJump?.(replyTo.messageId);
       }}
       className={cn(
-        "mb-2 w-full border-l-2 pl-2 text-left text-xs opacity-90 transition-opacity hover:opacity-100",
-        isOut ? "border-brand-dark/25" : "border-primary/40",
+        "mb-2 w-full rounded-lg border-l-[3px] px-2.5 py-1.5 text-left transition-opacity hover:opacity-100",
+        isOut
+          ? "border-brand-dark/50 bg-black/5 text-foreground/90"
+          : "border-emerald-500 bg-emerald-50/80 text-foreground/90",
         onJump && "cursor-pointer",
       )}
     >
-      <p className="font-medium">
-        {replyTo.direction === "out" ? "Вы" : "Клиент"}
+      <p
+        className={cn(
+          "text-[11px] font-semibold",
+          isOut ? "text-brand-dark" : "text-emerald-700",
+        )}
+      >
+        {author}
       </p>
-      <p className="line-clamp-2 whitespace-pre-wrap break-words">
+      <p className="line-clamp-2 whitespace-pre-wrap break-words text-xs opacity-90">
         {replyTo.content}
       </p>
     </button>
@@ -90,6 +102,9 @@ function messageSupportsReply(
   channel: ConversationDetail["channel"],
 ): boolean {
   if (channel === "telegram") return true;
+  if (channel === "whatsapp") {
+    return Boolean(msg.externalId);
+  }
   if (channel === "max") {
     if (!msg.externalId) return false;
     if (msg.externalId.startsWith("mid.")) return true;
@@ -664,6 +679,7 @@ export function ChatPanel({
                       <ReplyQuote
                         replyTo={msg.replyTo}
                         isOut={isOut}
+                        contactName={conversation.contact.name}
                         onJump={scrollToMessage}
                       />
                     )}

@@ -25,6 +25,7 @@ export interface WazzupMaxWebhookMessage {
   contentUri?: string;
   authorName?: string;
   isEcho?: boolean;
+  refMessageId?: string;
   contact?: {
     name?: string;
     username?: string;
@@ -273,6 +274,7 @@ export async function parseWazzupMaxMessage(
     maxUserId: isOutbound ? undefined : msg.chatId,
     direction: isOutbound ? "out" : "in",
     attachments,
+    replyToChannelMessageId: msg.refMessageId || undefined,
   };
 }
 

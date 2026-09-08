@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
+  ChevronUp,
   FileText,
   Loader2,
   Paperclip,
@@ -239,6 +241,26 @@ export function TemplatePicker({
     }
   }
 
+  async function handleMoveTemplate(id: string, direction: "up" | "down") {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/templates/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ move: direction }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Не удалось переместить");
+      if (Array.isArray(data.templates)) {
+        setTemplates(data.templates);
+      } else {
+        await loadTemplates();
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function handleSaveTemplate() {
     if (!formTitle.trim()) return;
     if (!formBody.trim() && formFiles.length === 0 && remainingAttachments.length === 0) {
@@ -307,7 +329,7 @@ export function TemplatePicker({
           align="start"
           side="top"
           sideOffset={8}
-          className="w-80 p-2"
+          className="w-[22rem] p-2"
         >
           <div className="mb-2 flex items-center justify-between px-1">
             <p className="text-sm font-medium">Шаблоны</p>
@@ -333,10 +355,10 @@ export function TemplatePicker({
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
-              {templates.map((template) => (
+              {templates.map((template, index) => (
                 <div
                   key={template.id}
-                  className="flex items-start gap-1 rounded-md hover:bg-accent"
+                  className="flex items-start gap-0.5 rounded-md hover:bg-accent"
                 >
                   <button
                     type="button"
@@ -350,6 +372,39 @@ export function TemplatePicker({
                         ` · ${template.attachments.length} файл(ов)`}
                     </p>
                   </button>
+                  <div className="mt-1 flex shrink-0 flex-col">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-7 text-muted-foreground hover:text-foreground"
+                      disabled={deletingId === template.id || index === 0}
+                      title="Выше"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleMoveTemplate(template.id, "up");
+                      }}
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-7 text-muted-foreground hover:text-foreground"
+                      disabled={
+                        deletingId === template.id ||
+                        index === templates.length - 1
+                      }
+                      title="Ниже"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleMoveTemplate(template.id, "down");
+                      }}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -489,10 +544,10 @@ export function TemplatePicker({
               <div className="space-y-2">
                 <Label>Текущие шаблоны</Label>
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-1">
-                  {templates.map((template) => (
+                  {templates.map((template, index) => (
                     <div
                       key={template.id}
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                      className="flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-muted/60"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{template.title}</p>
@@ -501,6 +556,35 @@ export function TemplatePicker({
                           {template.attachments.length > 0 &&
                             ` · ${template.attachments.length} файл(ов)`}
                         </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-7"
+                          disabled={deletingId === template.id || index === 0}
+                          title="Выше"
+                          onClick={() => void handleMoveTemplate(template.id, "up")}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-7"
+                          disabled={
+                            deletingId === template.id ||
+                            index === templates.length - 1
+                          }
+                          title="Ниже"
+                          onClick={() =>
+                            void handleMoveTemplate(template.id, "down")
+                          }
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                       <Button
                         type="button"

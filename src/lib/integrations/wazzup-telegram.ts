@@ -29,6 +29,7 @@ export interface WazzupMessage {
   text?: string;
   authorName?: string;
   isEcho?: boolean;
+  refMessageId?: string;
   contact?: {
     name?: string;
     username?: string;
@@ -190,6 +191,7 @@ export function parseWazzupTelegramMessage(
     senderName: contactName,
     senderUsername: msg.contact?.username,
     direction: isOutbound ? "out" : "in",
+    replyToChannelMessageId: msg.refMessageId || undefined,
   };
 }
 
@@ -225,6 +227,10 @@ export async function sendWazzupTelegramMessage(
     body.chatId = threadId;
   } else {
     body.username = threadId;
+  }
+
+  if (payload.replyToChannelMessageId) {
+    body.refMessageId = payload.replyToChannelMessageId;
   }
 
   const response = await fetch(`${WAZZUP_API}/v3/message`, {

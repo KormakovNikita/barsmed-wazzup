@@ -23,6 +23,7 @@ export interface WazzupWhatsAppWebhookMessage {
   contentUri?: string;
   authorName?: string;
   isEcho?: boolean;
+  refMessageId?: string;
   contact?: {
     name?: string;
     username?: string;
@@ -238,6 +239,7 @@ export async function parseWazzupWhatsAppMessage(
     senderName: contactName,
     direction: isOutbound ? "out" : "in",
     attachments,
+    replyToChannelMessageId: msg.refMessageId || undefined,
   };
 }
 
