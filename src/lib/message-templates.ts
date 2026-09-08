@@ -424,12 +424,35 @@ export function moveMessageTemplate(
   const [moved] = ordered.splice(index, 1);
   ordered.splice(swapIndex, 0, moved);
 
+  return reorderMessageTemplates(ordered.map((row) => row.id));
+}
+
+export function reorderMessageTemplates(
+  orderedIds: string[],
+): MessageTemplate[] {
+  seedDefaultTemplatesIfEmpty();
+  const existing = getDb()
+    .prepare(
+      "SELECT id FROM message_templates ORDER BY sort_order ASC, title ASC, id ASC",
+    )
+    .all() as Array<{ id: string }>;
+
+  const existingIds = new Set(existing.map((row) => row.id));
+  const uniqueOrdered = orderedIds.filter(
+    (id, index) => existingIds.has(id) && orderedIds.indexOf(id) === index,
+  );
+  for (const row of existing) {
+    if (!uniqueOrdered.includes(row.id)) {
+      uniqueOrdered.push(row.id);
+    }
+  }
+
   const tx = getDb().transaction(() => {
     const update = getDb().prepare(
       "UPDATE message_templates SET sort_order = ? WHERE id = ?",
     );
-    ordered.forEach((row, order) => {
-      update.run(order, row.id);
+    uniqueOrdered.forEach((id, order) => {
+      update.run(order, id);
     });
   });
   tx();

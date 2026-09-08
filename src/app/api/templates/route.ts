@@ -3,6 +3,7 @@ import {
   createMessageTemplate,
   listMessageTemplates,
   addTemplateAttachment,
+  reorderMessageTemplates,
 } from "@/lib/message-templates";
 import { mediaTypeFromTemplateFile } from "@/lib/template-media";
 
@@ -46,6 +47,26 @@ async function attachFileToTemplate(templateId: string, file: File) {
 
 export async function GET() {
   return NextResponse.json({ templates: listMessageTemplates() });
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json()) as { orderedIds?: unknown };
+    if (!Array.isArray(body.orderedIds) || body.orderedIds.length === 0) {
+      return NextResponse.json(
+        { error: "Укажите orderedIds" },
+        { status: 400 },
+      );
+    }
+    const orderedIds = body.orderedIds.map(String).filter(Boolean);
+    const templates = reorderMessageTemplates(orderedIds);
+    return NextResponse.json({ templates });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ошибка" },
+      { status: 400 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

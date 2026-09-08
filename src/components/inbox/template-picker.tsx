@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  ChevronDown,
-  ChevronUp,
   FileText,
+  GripVertical,
   Loader2,
   Paperclip,
   Pencil,
@@ -35,6 +34,7 @@ import {
   extractTemplatePlaceholders,
   templatePreviewLabel,
 } from "@/lib/template-utils";
+import { cn } from "@/lib/utils";
 
 interface TemplateAttachment {
   id: string;
@@ -106,7 +106,11 @@ export function TemplatePicker({
   );
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragIdRef = useRef<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -241,24 +245,69 @@ export function TemplatePicker({
     }
   }
 
-  async function handleMoveTemplate(id: string, direction: "up" | "down") {
-    setDeletingId(id);
+  function reorderTemplatesLocal(fromId: string, toId: string): MessageTemplate[] {
+    if (fromId === toId) return templates;
+    const next = [...templates];
+    const fromIndex = next.findIndex((item) => item.id === fromId);
+    const toIndex = next.findIndex((item) => item.id === toId);
+    if (fromIndex < 0 || toIndex < 0) return templates;
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  async function persistTemplateOrder(next: MessageTemplate[]) {
+    const previous = templates;
+    setTemplates(next);
+    setReordering(true);
     try {
-      const res = await fetch(`/api/templates/${id}`, {
+      const res = await fetch("/api/templates", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ move: direction }),
+        body: JSON.stringify({ orderedIds: next.map((item) => item.id) }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Не удалось переместить");
+      if (!res.ok) throw new Error(data.error ?? "Не удалось сохранить порядок");
       if (Array.isArray(data.templates)) {
         setTemplates(data.templates);
-      } else {
-        await loadTemplates();
       }
+    } catch {
+      setTemplates(previous);
     } finally {
-      setDeletingId(null);
+      setReordering(false);
     }
+  }
+
+  function handleDragStart(event: DragEvent, id: string) {
+    dragIdRef.current = id;
+    setDraggingId(id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+  }
+
+  function handleDragOver(event: DragEvent, id: string) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverId !== id) setDragOverId(id);
+  }
+
+  function handleDrop(event: DragEvent, id: string) {
+    event.preventDefault();
+    const fromId = dragIdRef.current || event.dataTransfer.getData("text/plain");
+    dragIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    if (!fromId || fromId === id) return;
+    const next = reorderTemplatesLocal(fromId, id);
+    if (next !== templates) {
+      void persistTemplateOrder(next);
+    }
+  }
+
+  function handleDragEnd() {
+    dragIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
   }
 
   async function handleSaveTemplate() {
@@ -355,14 +404,33 @@ export function TemplatePicker({
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
-              {templates.map((template, index) => (
+              {templates.map((template) => (
                 <div
                   key={template.id}
-                  className="flex items-start gap-0.5 rounded-md hover:bg-accent"
+                  onDragOver={(event) => handleDragOver(event, template.id)}
+                  onDrop={(event) => handleDrop(event, template.id)}
+                  className={cn(
+                    "flex items-start gap-0.5 rounded-md hover:bg-accent",
+                    draggingId === template.id && "opacity-50",
+                    dragOverId === template.id &&
+                      draggingId !== template.id &&
+                      "ring-1 ring-primary/40 bg-primary/5",
+                  )}
                 >
                   <button
                     type="button"
-                    className="min-w-0 flex-1 px-2 py-2 text-left"
+                    draggable={!reordering && deletingId !== template.id}
+                    onDragStart={(event) => handleDragStart(event, template.id)}
+                    onDragEnd={handleDragEnd}
+                    className="mt-2 ml-1 flex h-7 w-6 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
+                    title="Зажмите и перетащите"
+                    aria-label="Перетащить шаблон"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 px-1 py-2 text-left"
                     onClick={() => openTemplate(template)}
                   >
                     <p className="text-sm font-medium">{template.title}</p>
@@ -372,39 +440,6 @@ export function TemplatePicker({
                         ` · ${template.attachments.length} файл(ов)`}
                     </p>
                   </button>
-                  <div className="mt-1 flex shrink-0 flex-col">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-7 text-muted-foreground hover:text-foreground"
-                      disabled={deletingId === template.id || index === 0}
-                      title="Выше"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleMoveTemplate(template.id, "up");
-                      }}
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-7 text-muted-foreground hover:text-foreground"
-                      disabled={
-                        deletingId === template.id ||
-                        index === templates.length - 1
-                      }
-                      title="Ниже"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleMoveTemplate(template.id, "down");
-                      }}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -544,11 +579,35 @@ export function TemplatePicker({
               <div className="space-y-2">
                 <Label>Текущие шаблоны</Label>
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-1">
-                  {templates.map((template, index) => (
+                  <p className="px-2 py-1 text-[11px] text-muted-foreground">
+                    Перетащите за ⋮⋮, чтобы изменить порядок
+                  </p>
+                  {templates.map((template) => (
                     <div
                       key={template.id}
-                      className="flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-muted/60"
+                      onDragOver={(event) => handleDragOver(event, template.id)}
+                      onDrop={(event) => handleDrop(event, template.id)}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md px-1 py-1.5 hover:bg-muted/60",
+                        draggingId === template.id && "opacity-50",
+                        dragOverId === template.id &&
+                          draggingId !== template.id &&
+                          "ring-1 ring-primary/40 bg-primary/5",
+                      )}
                     >
+                      <button
+                        type="button"
+                        draggable={!reordering && deletingId !== template.id}
+                        onDragStart={(event) =>
+                          handleDragStart(event, template.id)
+                        }
+                        onDragEnd={handleDragEnd}
+                        className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
+                        title="Зажмите и перетащите"
+                        aria-label="Перетащить шаблон"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </button>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{template.title}</p>
                         <p className="line-clamp-1 text-xs text-muted-foreground">
@@ -556,35 +615,6 @@ export function TemplatePicker({
                           {template.attachments.length > 0 &&
                             ` · ${template.attachments.length} файл(ов)`}
                         </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-7"
-                          disabled={deletingId === template.id || index === 0}
-                          title="Выше"
-                          onClick={() => void handleMoveTemplate(template.id, "up")}
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-7"
-                          disabled={
-                            deletingId === template.id ||
-                            index === templates.length - 1
-                          }
-                          title="Ниже"
-                          onClick={() =>
-                            void handleMoveTemplate(template.id, "down")
-                          }
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
                       </div>
                       <Button
                         type="button"
