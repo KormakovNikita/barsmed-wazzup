@@ -104,8 +104,6 @@ function ensureTemplatesTable(): void {
       updated_at TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
-    CREATE INDEX IF NOT EXISTS idx_message_templates_sort
-      ON message_templates(sort_order ASC, title ASC);
 
     CREATE TABLE IF NOT EXISTS message_template_attachments (
       id TEXT PRIMARY KEY,
@@ -128,17 +126,23 @@ function ensureTemplatesTable(): void {
     getDb().exec(
       "ALTER TABLE message_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
     );
-    getDb().exec(`
-      UPDATE message_templates
-      SET sort_order = (
-        SELECT COUNT(*)
-        FROM message_templates AS older
-        WHERE older.updated_at > message_templates.updated_at
-           OR (older.updated_at = message_templates.updated_at AND older.title < message_templates.title)
-           OR (older.updated_at = message_templates.updated_at AND older.title = message_templates.title AND older.id < message_templates.id)
+    const rows = getDb()
+      .prepare(
+        "SELECT id FROM message_templates ORDER BY updated_at DESC, title ASC, id ASC",
       )
-    `);
+      .all() as Array<{ id: string }>;
+    const update = getDb().prepare(
+      "UPDATE message_templates SET sort_order = ? WHERE id = ?",
+    );
+    rows.forEach((row, index) => {
+      update.run(index, row.id);
+    });
   }
+
+  getDb().exec(`
+    CREATE INDEX IF NOT EXISTS idx_message_templates_sort
+      ON message_templates(sort_order ASC, title ASC);
+  `);
 }
 
 function nextTemplateSortOrder(): number {
