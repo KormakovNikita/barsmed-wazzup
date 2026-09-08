@@ -2165,11 +2165,16 @@ export async function sendMessage(
     updateMessage(message);
 
     if (!result.ok) {
-      return { message, error: result.error ?? "Не удалось отправить сообщение" };
+      const [enrichedFailed] = enrichMessagesWithReplies([message]);
+      return {
+        message: enrichedFailed,
+        error: result.error ?? "Не удалось отправить сообщение",
+      };
     }
   }
 
-  return { message };
+  const [enriched] = enrichMessagesWithReplies([message]);
+  return { message: enriched };
 }
 
 export function getMessageById(messageId: string): (Message & {

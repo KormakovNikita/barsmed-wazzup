@@ -10,6 +10,7 @@ import {
   getWazzupWebhookInfo,
   listWazzupChannels,
 } from "@/lib/integrations/wazzup-telegram";
+import { extractWazzupQuotedMessageId } from "@/lib/integrations/wazzup-quote";
 
 export interface WazzupWhatsAppWebhookMessage {
   messageId: string;
@@ -24,6 +25,16 @@ export interface WazzupWhatsAppWebhookMessage {
   authorName?: string;
   isEcho?: boolean;
   refMessageId?: string;
+  quoted_message_id?: string;
+  quotedMessageId?: string;
+  quotedMessage?: {
+    messageId?: string;
+    id?: string;
+    mid?: string;
+    message_id?: string;
+    text?: string;
+    content?: string;
+  };
   contact?: {
     name?: string;
     username?: string;
@@ -239,7 +250,7 @@ export async function parseWazzupWhatsAppMessage(
     senderName: contactName,
     direction: isOutbound ? "out" : "in",
     attachments,
-    replyToChannelMessageId: msg.refMessageId || undefined,
+    replyToChannelMessageId: extractWazzupQuotedMessageId(msg),
   };
 }
 

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseWazzupTelegramMessage } from "@/lib/integrations/wazzup-telegram";
 import { parseWazzupMaxMessage, isWazzupMaxMessage, shouldWazzupHandleMaxMessage } from "@/lib/integrations/wazzup-max";
+import { parseWazzupWhatsAppMessage } from "@/lib/integrations/wazzup-whatsapp";
+import {
+  extractWazzupQuotedMessageId,
+  extractWazzupQuotedText,
+} from "@/lib/integrations/wazzup-quote";
 import { processIncomingMessage } from "@/lib/store";
 
 interface WazzupWebhookMessage {
@@ -15,6 +20,17 @@ interface WazzupWebhookMessage {
   contentUri?: string;
   authorName?: string;
   isEcho?: boolean;
+  refMessageId?: string;
+  quoted_message_id?: string;
+  quotedMessageId?: string;
+  quotedMessage?: {
+    messageId?: string;
+    id?: string;
+    mid?: string;
+    message_id?: string;
+    text?: string;
+    content?: string;
+  };
   contact?: {
     name?: string;
     username?: string;
@@ -37,6 +53,18 @@ export async function POST(request: Request) {
   const processed: { conversationId: string; created: boolean }[] = [];
 
   for (const msg of body.messages ?? []) {
+    const quotedId = extractWazzupQuotedMessageId(msg);
+    if (quotedId || msg.quotedMessage) {
+      console.info(
+        "[wazzup-webhook] quote",
+        msg.chatType,
+        "ref=",
+        quotedId ?? "none",
+        "text=",
+        (extractWazzupQuotedText(msg) ?? "").slice(0, 80),
+      );
+    }
+
     if (isWazzupMaxMessage(msg)) {
       console.info(
         "[wazzup-webhook] max",
@@ -48,15 +76,22 @@ export async function POST(request: Request) {
     }
 
     const maxPayload = await parseWazzupMaxMessage(msg);
-    const payload = maxPayload ?? parseWazzupTelegramMessage(msg);
+    const whatsappPayload = maxPayload
+      ? null
+      : await parseWazzupWhatsAppMessage(msg);
+    const payload =
+      maxPayload ?? whatsappPayload ?? parseWazzupTelegramMessage(msg);
     if (!payload) continue;
 
     console.info(
       "[wazzup-webhook]",
       msg.chatType,
       msg.type ?? "text",
-      maxPayload ? "max" : "telegram",
+      maxPayload ? "max" : whatsappPayload ? "whatsapp" : "telegram",
       "processed",
+      payload.replyToChannelMessageId
+        ? `reply=${payload.replyToChannelMessageId}`
+        : "no-reply",
     );
 
     const result = processIncomingMessage(payload);

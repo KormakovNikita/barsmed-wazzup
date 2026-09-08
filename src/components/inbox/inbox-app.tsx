@@ -63,7 +63,12 @@ function mergeConversationDetail(
       return (
         msg.content === next.content &&
         msg.previousContent === next.previousContent &&
-        msg.editedAt === next.editedAt
+        msg.editedAt === next.editedAt &&
+        msg.status === next.status &&
+        msg.externalId === next.externalId &&
+        msg.replyToMessageId === next.replyToMessageId &&
+        (msg.replyTo?.messageId ?? null) === (next.replyTo?.messageId ?? null) &&
+        (msg.replyTo?.content ?? null) === (next.replyTo?.content ?? null)
       );
     })
   ) {

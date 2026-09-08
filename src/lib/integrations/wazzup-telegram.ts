@@ -1,5 +1,6 @@
 import type { IncomingMessagePayload, OutboundMessagePayload } from "@/lib/types";
 import { isWazzupConfigured } from "@/lib/integrations/wazzup-import";
+import { extractWazzupQuotedMessageId } from "@/lib/integrations/wazzup-quote";
 
 const WAZZUP_API = "https://api.wazzup24.com";
 
@@ -30,6 +31,16 @@ export interface WazzupMessage {
   authorName?: string;
   isEcho?: boolean;
   refMessageId?: string;
+  quoted_message_id?: string;
+  quotedMessageId?: string;
+  quotedMessage?: {
+    messageId?: string;
+    id?: string;
+    mid?: string;
+    message_id?: string;
+    text?: string;
+    content?: string;
+  };
   contact?: {
     name?: string;
     username?: string;
@@ -191,7 +202,7 @@ export function parseWazzupTelegramMessage(
     senderName: contactName,
     senderUsername: msg.contact?.username,
     direction: isOutbound ? "out" : "in",
-    replyToChannelMessageId: msg.refMessageId || undefined,
+    replyToChannelMessageId: extractWazzupQuotedMessageId(msg),
   };
 }
 

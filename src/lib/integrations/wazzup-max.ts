@@ -10,6 +10,7 @@ import {
   getWazzupWebhookInfo,
   listWazzupChannels,
 } from "@/lib/integrations/wazzup-telegram";
+import { extractWazzupQuotedMessageId } from "@/lib/integrations/wazzup-quote";
 
 export type MaxIncomingMode = "bot" | "wazzup";
 
@@ -26,6 +27,16 @@ export interface WazzupMaxWebhookMessage {
   authorName?: string;
   isEcho?: boolean;
   refMessageId?: string;
+  quoted_message_id?: string;
+  quotedMessageId?: string;
+  quotedMessage?: {
+    messageId?: string;
+    id?: string;
+    mid?: string;
+    message_id?: string;
+    text?: string;
+    content?: string;
+  };
   contact?: {
     name?: string;
     username?: string;
@@ -274,7 +285,7 @@ export async function parseWazzupMaxMessage(
     maxUserId: isOutbound ? undefined : msg.chatId,
     direction: isOutbound ? "out" : "in",
     attachments,
-    replyToChannelMessageId: msg.refMessageId || undefined,
+    replyToChannelMessageId: extractWazzupQuotedMessageId(msg),
   };
 }
 
